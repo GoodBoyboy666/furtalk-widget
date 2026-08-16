@@ -1,0 +1,28 @@
+@layer theme, base, components, utilities;
+
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css' layer(utilities) source(none);
+
+@source './element.ts';
+
+@layer base {
+  :host {
+    --furtalk-font: system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --furtalk-text: #1f2937;
+    --furtalk-text-muted: #6b7280;
+    --furtalk-border: #e5e7eb;
+    --furtalk-bg: #ffffff;
+    --furtalk-bg-muted: #f9fafb;
+    --furtalk-accent: #2563eb;
+    --furtalk-danger: #b91c1c;
+    --furtalk-radius: 8px;
+    display: block;
+    font-family: var(--furtalk-font);
+    color: var(--furtalk-text);
+    line-height: 1.6;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+}
