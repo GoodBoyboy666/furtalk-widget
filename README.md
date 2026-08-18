@@ -5,7 +5,7 @@ Furtalk 评论组件。基于 Lit + Shadow DOM + Vite 构建，独立浏览器 E
 使用时只需加载托管的 ES module 并挂载自定义元素：
 
 ```html
-<script type="module" src="https://cdn.example.com/widget/furtalk.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/furtalk-widget/dist/furtalk.js"></script>
 <furtalk-comments site-id="123" page-key="article-2026-08" service-origin="https://comments.example.com"></furtalk-comments>
 ```
 

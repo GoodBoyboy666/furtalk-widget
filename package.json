@@ -1,9 +1,17 @@
 {
   "name": "furtalk-widget",
-  "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "Framework-neutral embeddable Furtalk comment widget custom element",
+  "description": "Furtalk 评论组件",
+  "main": "./dist/furtalk.js",
+  "exports": "./dist/furtalk.js",
+  "files": [
+    "dist"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/GoodBoyboy666/furtalk-widget.git"
+  },
   "scripts": {
     "dev": "vite build --watch",
     "build": "vite build",
