@@ -3,7 +3,7 @@ import { resolve } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { render } from 'lit'
 import type { TemplateResult } from 'lit'
-import { FurtalkCommentsElement } from '../src/element'
+import { FurtalkCommentsElement, formatRelativeTime } from '../src/element'
 import type { CommentNode } from '../src/comments'
 import type { WidgetState } from '../src/state'
 import type {
@@ -1380,5 +1380,40 @@ describe('FurtalkCommentsElement load-more retry', () => {
     expect(element.state.comments.map((c) => c.id)).toEqual(['1', '2'])
     expect(element.state.nextCursor).toBeNull()
     expect(element.state.loadingMore).toBe(false)
+  })
+})
+
+describe('formatRelativeTime', () => {
+  const baseTime = 1755500000000 // 2025-08-18T06:53:20.000Z
+
+  it('formats seconds ago (<60s)', () => {
+    const time = new Date(baseTime - 30 * 1000).toISOString()
+    expect(formatRelativeTime(time, baseTime)).toBe('30秒前')
+  })
+
+  it('formats minutes ago (<60m)', () => {
+    const time = new Date(baseTime - 15 * 60 * 1000).toISOString()
+    expect(formatRelativeTime(time, baseTime)).toBe('15分钟前')
+  })
+
+  it('formats hours ago (<24h)', () => {
+    const time = new Date(baseTime - 3 * 3600 * 1000).toISOString()
+    expect(formatRelativeTime(time, baseTime)).toBe('3小时前')
+  })
+
+  it('formats days ago (<7d)', () => {
+    const time = new Date(baseTime - 4 * 86400 * 1000).toISOString()
+    expect(formatRelativeTime(time, baseTime)).toBe('4天前')
+  })
+
+  it('falls back to localized date for older timestamps (>=7d)', () => {
+    const oldTime = new Date(baseTime - 10 * 86400 * 1000)
+    expect(formatRelativeTime(oldTime.toISOString(), baseTime)).toBe(
+      oldTime.toLocaleDateString(),
+    )
+  })
+
+  it('handles invalid timestamps gracefully', () => {
+    expect(formatRelativeTime('invalid-date', baseTime)).toBe('invalid-date')
   })
 })

@@ -383,7 +383,12 @@ describe('FurtalkCommentsElement CAPTCHA mask', () => {
     element.store = null
     element.loadPage = vi.fn().mockResolvedValue(undefined)
     element.ensureAuthenticated = vi.fn().mockResolvedValue(true)
-    element.root = { comment: '', body: 'hello', error: '', replyTargetId: null }
+    element.root = {
+      comment: '',
+      body: 'hello',
+      error: '',
+      replyTargetId: null,
+    }
     element.reply = null
     element.captchaMaskKey = null
     element.pendingMaskedSubmit = null
@@ -486,7 +491,12 @@ describe('FurtalkCommentsElement CAPTCHA mask', () => {
     const instance = maskedInstance()
     const createMock = vi.fn()
     instance.api = { createComment: createMock }
-    instance.reply = { comment: '', body: 'reply', error: '', replyTargetId: '5' }
+    instance.reply = {
+      comment: '',
+      body: 'reply',
+      error: '',
+      replyTargetId: '5',
+    }
 
     instance.submitReply()
 
@@ -498,7 +508,12 @@ describe('FurtalkCommentsElement CAPTCHA mask', () => {
     const instance = maskedInstance()
     const createMock = vi.fn()
     instance.api = { createComment: createMock }
-    instance.reply = { comment: '', body: 'reply', error: '', replyTargetId: '5' }
+    instance.reply = {
+      comment: '',
+      body: 'reply',
+      error: '',
+      replyTargetId: '5',
+    }
 
     instance.submitReply()
     expect(instance.captchaMaskKey).toBe('reply')
@@ -553,14 +568,12 @@ describe('FurtalkCommentsElement CAPTCHA mask', () => {
 
     // 让授权挂起：只有显式 resolve 后流程才会进入提交前一刻。
     let resolveAuth!: () => void
-    instance.ensureAuthenticated = vi
-      .fn()
-      .mockImplementation(
-        () =>
-          new Promise<boolean>((resolve) => {
-            resolveAuth = () => resolve(true)
-          }),
-      )
+    instance.ensureAuthenticated = vi.fn().mockImplementation(
+      () =>
+        new Promise<boolean>((resolve) => {
+          resolveAuth = () => resolve(true)
+        }),
+    )
 
     instance.submitRoot()
 

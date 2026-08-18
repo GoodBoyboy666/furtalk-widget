@@ -21,7 +21,10 @@ interface FakePopup {
   targetOrigin: string[]
 }
 
-function makeHooks(popup: FakePopup, targetOrigin: string): {
+function makeHooks(
+  popup: FakePopup,
+  targetOrigin: string,
+): {
   hooks: AuthorizationFlowHooks
   listeners: ((event: MessageEvent) => void)[]
 } {
@@ -163,26 +166,36 @@ describe('runAuthorizationFlow', () => {
     expect(initRecord?.website_url).toBeUndefined()
     expect(flow.popup.targetOrigin[0]).toBe('https://comments.example')
 
-    flow.deliver({ type: 'furtalk:authorization-ready', request_id: init?.type === 'furtalk:authorization-init' ? init.request_id : '' })
+    flow.deliver({
+      type: 'furtalk:authorization-ready',
+      request_id:
+        init?.type === 'furtalk:authorization-init' ? init.request_id : '',
+    })
     flow.deliver({
       type: 'furtalk:authorization-success',
-      request_id: init?.type === 'furtalk:authorization-init' ? init.request_id : '',
+      request_id:
+        init?.type === 'furtalk:authorization-init' ? init.request_id : '',
       code: 'code-1',
     })
     const outcome = await flow.promise
     expect(outcome).toEqual({
       status: 'success',
       code: 'code-1',
-      requestId: init?.type === 'furtalk:authorization-init' ? init.request_id : '',
+      requestId:
+        init?.type === 'furtalk:authorization-init' ? init.request_id : '',
     })
   })
 
   it('returns cancelled when the popup sends cancellation', async () => {
     const flow = runFlow()
-    const requestId = flow.popup.messages[0]?.type === 'furtalk:authorization-init'
-      ? flow.popup.messages[0].request_id
-      : ''
-    flow.deliver({ type: 'furtalk:authorization-cancelled', request_id: requestId })
+    const requestId =
+      flow.popup.messages[0]?.type === 'furtalk:authorization-init'
+        ? flow.popup.messages[0].request_id
+        : ''
+    flow.deliver({
+      type: 'furtalk:authorization-cancelled',
+      request_id: requestId,
+    })
     const outcome = await flow.promise
     expect(outcome.status).toBe('cancelled')
   })
@@ -207,9 +220,10 @@ describe('runAuthorizationFlow', () => {
 
   it('ignores messages from the wrong origin', async () => {
     const flow = runFlow({ timeoutMs: 1000, resultTimeoutMs: 1000 })
-    const requestId = flow.popup.messages[0]?.type === 'furtalk:authorization-init'
-      ? flow.popup.messages[0].request_id
-      : ''
+    const requestId =
+      flow.popup.messages[0]?.type === 'furtalk:authorization-init'
+        ? flow.popup.messages[0].request_id
+        : ''
     // Deliver from an attacker origin; the flow must not settle on it.
     flow.deliver(
       { type: 'furtalk:authorization-cancelled', request_id: requestId },
@@ -221,9 +235,10 @@ describe('runAuthorizationFlow', () => {
 
   it('ignores messages from the wrong source window', async () => {
     const flow = runFlow({ timeoutMs: 1000, resultTimeoutMs: 1000 })
-    const requestId = flow.popup.messages[0]?.type === 'furtalk:authorization-init'
-      ? flow.popup.messages[0].request_id
-      : ''
+    const requestId =
+      flow.popup.messages[0]?.type === 'furtalk:authorization-init'
+        ? flow.popup.messages[0].request_id
+        : ''
     flow.deliver(
       { type: 'furtalk:authorization-cancelled', request_id: requestId },
       'https://comments.example',
@@ -234,12 +249,15 @@ describe('runAuthorizationFlow', () => {
   it('stops retrying after the popup acknowledges readiness', async () => {
     const flow = runFlow()
     const before = flow.popup.messages.length
-    const requestId = flow.popup.messages[0]?.type === 'furtalk:authorization-init'
-      ? flow.popup.messages[0].request_id
-      : ''
+    const requestId =
+      flow.popup.messages[0]?.type === 'furtalk:authorization-init'
+        ? flow.popup.messages[0].request_id
+        : ''
     flow.deliver({ type: 'furtalk:authorization-ready', request_id: requestId })
     // Give any stale interval a chance to fire; no additional init should be sent.
-    await new Promise((resolve) => setTimeout(resolve, INIT_RETRY_INTERVAL_MS * 2))
+    await new Promise((resolve) =>
+      setTimeout(resolve, INIT_RETRY_INTERVAL_MS * 2),
+    )
     const after = flow.popup.messages.length
     expect(after).toBe(before)
   })

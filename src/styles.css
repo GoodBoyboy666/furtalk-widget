@@ -7,15 +7,17 @@
 
 @layer base {
   :host {
-    --furtalk-font: system-ui, -apple-system, 'Segoe UI', sans-serif;
-    --furtalk-text: #1f2937;
-    --furtalk-text-muted: #6b7280;
-    --furtalk-border: #e5e7eb;
+    --furtalk-font:
+      ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
+      Roboto, 'Helvetica Neue', Arial, sans-serif;
+    --furtalk-text: #1e293b;
+    --furtalk-text-muted: #64748b;
+    --furtalk-border: #e2e8f0;
     --furtalk-bg: #ffffff;
-    --furtalk-bg-muted: #f9fafb;
+    --furtalk-bg-muted: #f8fafc;
     --furtalk-accent: #2563eb;
-    --furtalk-danger: #b91c1c;
-    --furtalk-radius: 8px;
+    --furtalk-danger: #dc2626;
+    --furtalk-radius: 10px;
     display: block;
     font-family: var(--furtalk-font);
     color: var(--furtalk-text);

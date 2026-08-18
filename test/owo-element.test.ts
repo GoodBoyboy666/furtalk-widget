@@ -14,9 +14,7 @@ if (!customElements.get(TAG)) {
 
 const CATALOG_URL = 'https://cdn.example/owo.json'
 
-function runtimeConfig(
-  overrides: Partial<RuntimeConfig> = {},
-): RuntimeConfig {
+function runtimeConfig(overrides: Partial<RuntimeConfig> = {}): RuntimeConfig {
   return {
     site_id: '1',
     name: 'Site',
@@ -43,9 +41,7 @@ const sampleCatalog: EmojiGroup[] = [
     id: 'custom-1',
     label: 'Emoji',
     kind: 'emoji',
-    items: [
-      { kind: 'emoji', label: '😀', insertion: '😀', display: '😀' },
-    ],
+    items: [{ kind: 'emoji', label: '😀', insertion: '😀', display: '😀' }],
   },
 ]
 

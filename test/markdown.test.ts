@@ -40,7 +40,9 @@ describe('renderMarkdown', () => {
   })
 
   it('escapes raw HTML even next to markdown images', () => {
-    const out = renderMarkdown('![x](https://cdn.example/a.png) <script>alert(1)</script>')
+    const out = renderMarkdown(
+      '![x](https://cdn.example/a.png) <script>alert(1)</script>',
+    )
     expect(out).not.toContain('<script>')
     expect(out).toContain('&lt;script&gt;')
   })

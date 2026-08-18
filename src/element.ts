@@ -145,82 +145,103 @@ const FIELD_DIVIDER =
 const ACTIONS_ROW =
   'flex flex-wrap items-center justify-between gap-2 [@media(max-width:480px)]:flex-col [@media(max-width:480px)]:items-stretch [@media(max-width:480px)]:gap-2'
 
-/** Nested comment list. */
-const CHILDREN_LIST = 'list-none m-0 mt-1.5 pl-4 [@media(max-width:480px)]:pl-2'
+/** Nested comment list for flat replies under a root comment. */
+const CHILDREN_LIST =
+  'ft-children list-none m-0 mt-3 pl-3.5 [border-left:2px_solid_var(--furtalk-border)] flex flex-col gap-2 w-full [@media(max-width:480px)]:pl-2.5'
 
 /** Shared button chrome (sizing, focus ring); color/background are per kind. */
 const BASE_BUTTON =
-  'border border-solid rounded-[6px] px-3.5 py-[7px] cursor-pointer [font:inherit] disabled:opacity-60 disabled:cursor-default focus-visible:outline-2 focus-visible:outline-(--furtalk-accent) focus-visible:outline-offset-1'
+  'border border-solid rounded-(--furtalk-radius) px-3.5 py-[7px] cursor-pointer [font:inherit] font-medium transition-all duration-150 disabled:opacity-50 disabled:cursor-default focus-visible:outline-2 focus-visible:outline-(--furtalk-accent) focus-visible:outline-offset-1'
 
 /** Default button: bordered, muted background, inherits the theme text. */
 const DEFAULT_BUTTON =
   BASE_BUTTON +
-  ' border-(--furtalk-border) bg-(--furtalk-bg-muted) text-(--furtalk-text)'
+  ' border-(--furtalk-border) bg-(--furtalk-bg-muted) text-(--furtalk-text) hover:bg-(--furtalk-border)/40'
 
 /** Primary action button: accent fill with white text. */
 const PRIMARY_BUTTON =
   BASE_BUTTON +
-  ' border-(--furtalk-accent) bg-(--furtalk-accent) text-white text-[13px]'
+  ' border-(--furtalk-accent) bg-(--furtalk-accent) text-white text-[13px] hover:brightness-105 active:scale-[0.99] shadow-2xs'
 
 /** Borderless/transparent chrome for ghost buttons. */
 const GHOST_BUTTON =
-  'border-0 bg-transparent rounded-[6px] cursor-pointer [font:inherit] disabled:opacity-60 disabled:cursor-default focus-visible:outline-2 focus-visible:outline-(--furtalk-accent) focus-visible:outline-offset-1'
+  'border-0 bg-transparent rounded-(--furtalk-radius) cursor-pointer [font:inherit] font-medium transition-all duration-150 disabled:opacity-50 disabled:cursor-default focus-visible:outline-2 focus-visible:outline-(--furtalk-accent) focus-visible:outline-offset-1'
 
 /** Danger chrome (red text, no border); sizing is added per context. */
 const DANGER_CHROME =
-  'border-0 bg-transparent text-(--furtalk-danger) rounded-[6px] cursor-pointer [font:inherit] disabled:opacity-60 disabled:cursor-default enabled:hover:bg-(--furtalk-bg-muted) focus-visible:outline-2 focus-visible:outline-(--furtalk-accent) focus-visible:outline-offset-1'
+  'border-0 bg-transparent text-(--furtalk-danger) rounded-(--furtalk-radius) cursor-pointer [font:inherit] font-medium transition-all duration-150 disabled:opacity-50 disabled:cursor-default enabled:hover:bg-red-50 focus-visible:outline-2 focus-visible:outline-(--furtalk-accent) focus-visible:outline-offset-1'
 
 /** Danger button outside the comment actions row (e.g. logout). */
 const DANGER_BUTTON = DANGER_CHROME + ' text-[13px] px-3.5 py-[7px]'
 
 /** Danger button inside the comment actions row (compact size). */
-const ACTION_DANGER_BUTTON = DANGER_CHROME + ' text-[12px] px-2.5 py-[3px]'
+const ACTION_DANGER_BUTTON = DANGER_CHROME + ' text-[12px] px-1.5 py-0.5'
 
 /** Comment list action buttons (回复 / 取消). */
 const ACTION_BUTTON =
   GHOST_BUTTON +
-  ' text-(--furtalk-text) text-[12px] px-2.5 py-[3px] enabled:hover:bg-(--furtalk-bg-muted)'
+  ' text-(--furtalk-text-muted) text-[12px] px-1.5 py-0.5 rounded-md enabled:hover:bg-(--furtalk-bg-muted) enabled:hover:text-(--furtalk-text)'
 
 /** Sort control buttons; the pressed button switches to the accent fill. */
 const SORT_BUTTON =
   GHOST_BUTTON +
-  ' text-(--furtalk-text) text-[12px] px-2.5 py-1 hover:bg-(--furtalk-bg-muted) aria-pressed:bg-(--furtalk-accent) aria-pressed:text-white'
+  ' text-(--furtalk-text-muted) text-[12px] px-2.5 py-1 hover:bg-(--furtalk-bg-muted) hover:text-(--furtalk-text) aria-pressed:bg-(--furtalk-accent) aria-pressed:text-white aria-pressed:font-semibold'
 
 /** OwO category tab buttons; the selected tab switches to the accent fill. */
 const OWO_TAB_BUTTON =
   GHOST_BUTTON +
-  ' text-(--furtalk-text) text-[12px] px-2.5 py-[3px] hover:bg-(--furtalk-bg-muted) aria-selected:bg-(--furtalk-accent) aria-selected:text-white'
+  ' text-(--furtalk-text-muted) text-[12px] px-2.5 py-[4px] hover:bg-(--furtalk-bg-muted) hover:text-(--furtalk-text) aria-selected:bg-(--furtalk-accent) aria-selected:text-white aria-selected:font-medium'
 
 /** OwO emoji item buttons. */
 const OWO_ITEM_BUTTON =
-  'inline-flex items-center justify-start min-h-8 max-w-full px-1.5 py-1 border-0 bg-transparent text-[14px] leading-none whitespace-nowrap cursor-pointer [font:inherit] hover:bg-(--furtalk-bg)'
+  'inline-flex items-center justify-start min-h-8 max-w-full px-2 py-1 border-0 bg-transparent text-[14px] leading-none whitespace-nowrap cursor-pointer [font:inherit] rounded-md transition-colors hover:bg-(--furtalk-bg)'
 
 /** OwO picker trigger button. */
 const OWO_TRIGGER_BUTTON =
-  'inline-flex items-center p-1 border-0 bg-transparent text-(--furtalk-text-muted) rounded-[6px] cursor-pointer [font:inherit] hover:text-(--furtalk-text) hover:bg-(--furtalk-bg-muted) aria-expanded:text-(--furtalk-accent) focus-visible:outline-2 focus-visible:outline-(--furtalk-accent) focus-visible:outline-offset-1'
+  'inline-flex items-center p-1.5 border-0 bg-transparent text-(--furtalk-text-muted) rounded-(--furtalk-radius) cursor-pointer [font:inherit] transition-colors hover:text-(--furtalk-text) hover:bg-(--furtalk-bg-muted) aria-expanded:text-(--furtalk-accent) aria-expanded:bg-(--furtalk-bg-muted) focus-visible:outline-2 focus-visible:outline-(--furtalk-accent) focus-visible:outline-offset-1'
 
 /** Load-more button. */
 const LOAD_MORE_BUTTON =
   GHOST_BUTTON +
-  ' mx-auto text-(--furtalk-text-muted) text-[12px] hover:text-(--furtalk-text) hover:bg-(--furtalk-bg-muted)'
+  ' mx-auto text-(--furtalk-text-muted) text-[13px] px-4 py-2 border border-solid border-(--furtalk-border) bg-(--furtalk-bg) hover:text-(--furtalk-text) hover:bg-(--furtalk-bg-muted)'
 
 /** Muted helper copy. */
 const NOTE_TEXT = 'text-(--furtalk-text-muted) text-[13px]'
 
 /** Neutral centered state box (loading / empty). */
-const STATE_TEXT = 'ft-state px-4 py-6 text-center text-(--furtalk-text-muted)'
+const STATE_TEXT =
+  'ft-state px-4 py-8 text-center text-(--furtalk-text-muted) text-[14px]'
 
 /** Error state box (keeps the ft-state hook alongside ft-error). */
 const STATE_ERROR =
-  'ft-state ft-error border border-solid border-[#fecaca] bg-[#fef2f2] text-[#b91c1c] p-3 rounded-(--furtalk-radius) text-center'
+  'ft-state ft-error border border-solid border-[#fecaca] bg-[#fef2f2] text-[#b91c1c] p-3.5 rounded-(--furtalk-radius) text-center text-[14px]'
 
 /** Text inputs and textarea baseline. */
 const INPUT_TEXT =
-  '[font:inherit] border-0 rounded-none px-2.5 py-2 bg-(--furtalk-bg) text-(--furtalk-text) min-w-0 w-full'
+  '[font:inherit] border-0 rounded-none px-3 py-2 bg-(--furtalk-bg) text-(--furtalk-text) min-w-0 w-full'
 
 /** Root widget surface. */
 const WIDGET_ROOT =
   'ft-widget bg-(--furtalk-bg) rounded-(--furtalk-radius) text-[15px]'
+
+/** Formats a timestamp as relative time (<7d) or localized date string (>=7d). */
+export function formatRelativeTime(
+  isoString: string,
+  now: number = Date.now(),
+): string {
+  const timestamp = Date.parse(isoString)
+  if (Number.isNaN(timestamp)) return isoString
+  const diffMs = Math.max(0, now - timestamp)
+  const seconds = Math.floor(diffMs / 1000)
+  if (seconds < 60) return `${Math.max(1, seconds)}秒前`
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `${minutes}分钟前`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}小时前`
+  const days = Math.floor(hours / 24)
+  if (days < 7) return `${days}天前`
+  return new Date(timestamp).toLocaleDateString()
+}
 
 export class FurtalkCommentsElement extends LitElement {
   static override properties = {
@@ -1172,7 +1193,7 @@ export class FurtalkCommentsElement extends LitElement {
       phase === 'unsupported'
     return html`
       <div
-        class="ft-auth-banner border border-solid border-[#bfdbfe] bg-[#eff6ff] text-[#1e40af] p-3 rounded-(--furtalk-radius) mb-3"
+        class="ft-auth-banner border border-solid border-[#bfdbfe] bg-[#eff6ff] text-[#1e40af] p-3.5 rounded-(--furtalk-radius) mb-3 text-[13.5px]"
         role="status"
       >
         <strong class="block mb-0.5">${notice.title}</strong>
@@ -1200,7 +1221,7 @@ export class FurtalkCommentsElement extends LitElement {
         <div class="ft-field grid min-w-0">
           <input
             id="ft-nickname"
-            class="ft-input ${INPUT_TEXT}"
+            class="ft-input ${INPUT_TEXT} rounded-l-(--furtalk-radius) focus:bg-(--furtalk-bg)"
             type="text"
             autocomplete="nickname"
             maxlength="100"
@@ -1218,7 +1239,7 @@ export class FurtalkCommentsElement extends LitElement {
         <div class="ft-field grid min-w-0 ${FIELD_DIVIDER}">
           <input
             id="ft-email"
-            class="ft-input ${INPUT_TEXT}"
+            class="ft-input ${INPUT_TEXT} focus:bg-(--furtalk-bg)"
             type="email"
             autocomplete="email"
             placeholder="邮箱"
@@ -1235,7 +1256,7 @@ export class FurtalkCommentsElement extends LitElement {
         <div class="ft-field grid min-w-0 ${FIELD_DIVIDER}">
           <input
             id="ft-website"
-            class="ft-input ${INPUT_TEXT}"
+            class="ft-input ${INPUT_TEXT} rounded-r-(--furtalk-radius) focus:bg-(--furtalk-bg)"
             type="url"
             autocomplete="url"
             placeholder="网站（可选）"
@@ -1262,7 +1283,7 @@ export class FurtalkCommentsElement extends LitElement {
     const panelOpen = this.owoOpenKey === key
     return html`
       <textarea
-        class="ft-textarea ${INPUT_TEXT} min-h-[84px] resize-y [border-bottom:1px_solid_var(--furtalk-border)] focus:outline-2 focus:outline-(--furtalk-accent) focus:outline-offset-1"
+        class="ft-textarea ${INPUT_TEXT} min-h-[90px] resize-y [border-bottom:1px_solid_var(--furtalk-border)] focus:outline-2 focus:outline-(--furtalk-accent) focus:outline-offset-1 text-[14px] leading-relaxed"
         data-composer=${key}
         placeholder="写下你的评论…"
         aria-label="评论内容"
@@ -1355,7 +1376,7 @@ export class FurtalkCommentsElement extends LitElement {
     return html`
       <div
         id="ft-owo-panel-${key}"
-        class="ft-owo-panel absolute inset-x-0 top-full mt-2 z-20 rounded-(--furtalk-radius) p-2.5 grid gap-2 bg-(--furtalk-bg) shadow-[0_2px_10px_rgba(0,0,0,0.1)] max-h-80 overflow-y-auto"
+        class="ft-owo-panel absolute inset-x-0 top-full mt-2 z-20 rounded-(--furtalk-radius) p-3 grid gap-2.5 bg-(--furtalk-bg) border border-solid border-(--furtalk-border) shadow-[0_4px_20px_rgba(0,0,0,0.08)] max-h-80 overflow-y-auto"
         role="dialog"
         aria-modal="false"
         aria-label="选择表情"
@@ -1494,7 +1515,7 @@ export class FurtalkCommentsElement extends LitElement {
     const submitDisabled = busy
     return html`
       <div
-        class="ft-composer relative border border-solid border-(--furtalk-border) rounded-(--furtalk-radius) p-3 mb-4 grid gap-2.5"
+        class="ft-composer relative border border-solid border-(--furtalk-border) rounded-(--furtalk-radius) p-3 mb-4 grid gap-2.5 bg-(--furtalk-bg) shadow-2xs focus-within:border-(--furtalk-accent)/60 transition-colors"
       >
         ${this.renderProfile()} ${this.renderComposerBody(this.root, 'root')}
         <div class="ft-actions-row ${ACTIONS_ROW}">
@@ -1539,10 +1560,10 @@ export class FurtalkCommentsElement extends LitElement {
       key === 'reply' ? '完成验证后即可发布回复。' : '完成验证后即可发表评论。'
     return html`
       <div
-        class="ft-captcha-mask fixed inset-0 z-[2147483647] bg-[rgba(17,24,39,0.45)] flex p-4 overflow-y-auto"
+        class="ft-captcha-mask fixed inset-0 z-[2147483647] bg-[rgba(17,24,39,0.45)] backdrop-blur-xs flex p-4 overflow-y-auto"
       >
         <div
-          class="ft-captcha-mask-panel m-auto w-full max-w-[360px] bg-(--furtalk-bg) border border-solid border-(--furtalk-border) rounded-(--furtalk-radius) shadow-[0_10px_30px_rgba(0,0,0,0.15)] p-4 grid gap-2.5 outline-none"
+          class="ft-captcha-mask-panel m-auto w-full max-w-[360px] bg-(--furtalk-bg) border border-solid border-(--furtalk-border) rounded-(--furtalk-radius) shadow-[0_10px_30px_rgba(0,0,0,0.15)] p-4.5 grid gap-3 outline-none"
           role="dialog"
           aria-modal="true"
           aria-label="人机验证"
@@ -1581,9 +1602,22 @@ export class FurtalkCommentsElement extends LitElement {
     `
   }
 
-  private renderNode(
+  private collectDescendants(node: CommentNode): CommentNode[] {
+    const result: CommentNode[] = []
+    const traverse = (current: CommentNode) => {
+      for (const child of current.children) {
+        result.push(child)
+        traverse(child)
+      }
+    }
+    traverse(node)
+    return result
+  }
+
+  private renderCommentContent(
     node: CommentNode,
     session: WidgetSession | undefined,
+    isRoot: boolean,
   ): TemplateResult {
     const deleted = node.status === 'deleted'
     const pending = node.status === 'pending'
@@ -1602,23 +1636,33 @@ export class FurtalkCommentsElement extends LitElement {
       node.depth < (this.state.config?.max_reply_depth ?? 0)
     const replying = this.reply?.replyTargetId === node.id
     const confirming = this.deletingId === node.id
+    const avatarClass = isRoot
+      ? 'ft-avatar size-8 rounded-full align-middle shrink-0 mt-0.5 [border:1px_solid_var(--furtalk-border)] object-cover shadow-2xs'
+      : 'ft-avatar size-7 rounded-full align-middle shrink-0 mt-0.5 [border:1px_solid_var(--furtalk-border)] object-cover'
+    const authorClass = isRoot
+      ? 'ft-author font-semibold text-(--furtalk-text) text-[14px]'
+      : 'ft-author font-semibold text-(--furtalk-text) text-[13px]'
+    const bodyClass = isRoot
+      ? 'ft-body [word-break:break-word] text-[14px] leading-relaxed [&_p]:m-0 [&_p]:mb-2 [&_a]:text-(--furtalk-accent) [&_a]:underline-offset-2 [&_a]:hover:underline [&_img]:max-w-full [&_img]:h-auto [&_blockquote]:my-2 [&_blockquote]:py-1 [&_blockquote]:px-3 [&_blockquote]:[border-left:3px_solid_var(--furtalk-accent)] [&_blockquote]:bg-(--furtalk-bg-muted) [&_blockquote]:rounded-r-md [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:bg-(--furtalk-bg-muted) [&_code]:rounded-md [&_code]:text-xs [&_code]:font-mono'
+      : 'ft-body [word-break:break-word] text-[13.5px] leading-relaxed [&_p]:m-0 [&_p]:mb-1.5 [&_a]:text-(--furtalk-accent) [&_a]:underline-offset-2 [&_a]:hover:underline [&_img]:max-w-full [&_img]:h-auto [&_blockquote]:my-2 [&_blockquote]:py-1 [&_blockquote]:px-3 [&_blockquote]:[border-left:3px_solid_var(--furtalk-accent)] [&_blockquote]:bg-(--furtalk-bg-muted) [&_blockquote]:rounded-r-md [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:bg-(--furtalk-bg-muted) [&_code]:rounded-md [&_code]:text-xs [&_code]:font-mono'
+
     return html`
-      <li class="ft-item py-2.5">
+      <img
+        class="${avatarClass}"
+        src=${node.avatar_url || ''}
+        alt=""
+        loading="lazy"
+      />
+      <div class="ft-content min-w-0 flex-1">
         <div
-          class="ft-meta flex items-center gap-2 text-[13px] text-(--furtalk-text-muted) mb-1"
+          class="ft-meta flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-(--furtalk-text-muted) mb-1"
         >
-          <img
-            class="ft-avatar size-6 rounded-full align-middle"
-            src=${node.avatar_url || ''}
-            alt=""
-            loading="lazy"
-          />
-          <span class="ft-author font-semibold text-(--furtalk-text)">
+          <span class="${authorClass}">
             ${
               node.author_website
                 ? html`
                     <a
-                      class="text-(--furtalk-text) no-underline"
+                      class="text-(--furtalk-text) no-underline hover:text-(--furtalk-accent) transition-colors"
                       href=${node.author_website}
                       target="_blank"
                       rel="nofollow ugc noopener noreferrer"
@@ -1628,6 +1672,22 @@ export class FurtalkCommentsElement extends LitElement {
                 : node.author_nickname
             }
           </span>
+          ${
+            node.author_role === 'admin'
+              ? html`<span
+                  class="ft-admin inline-block text-[11px] font-medium text-blue-700 bg-blue-100 dark:text-blue-300 dark:bg-blue-900/40 rounded-full px-2 py-0.5"
+                  >管理员</span
+                >`
+              : nothing
+          }
+          ${
+            pending
+              ? html`<span
+                  class="ft-pending inline-block text-[11px] font-medium text-amber-700 bg-amber-100 dark:text-amber-300 dark:bg-amber-900/40 rounded-full px-2 py-0.5"
+                  >待审核</span
+                >`
+              : nothing
+          }
           ${
             node.parent_id
               ? html`
@@ -1641,30 +1701,15 @@ export class FurtalkCommentsElement extends LitElement {
                 `
               : nothing
           }
-          ${
-            node.author_role === 'admin'
-              ? html`<span
-                  class="ft-admin inline-block ml-2 text-[12px] text-[#1d4ed8] bg-[#dbeafe] rounded px-1.5"
-                  >管理员</span
-                >`
-              : nothing
-          }
-          ${
-            pending
-              ? html`<span
-                  class="ft-pending inline-block ml-2 text-[12px] text-[#92400e] bg-[#fef3c7] rounded px-1.5"
-                  >待审核</span
-                >`
-              : nothing
-          }
-          <time class="ft-time ml-auto text-xs" datetime=${node.created_at}>
-            ${new Date(node.created_at).toLocaleDateString()}
+          <time
+            class="ft-time text-xs text-(--furtalk-text-muted)"
+            datetime=${node.created_at}
+          >
+            ${formatRelativeTime(node.created_at)}
           </time>
         </div>
         <div
-          class="ft-body [word-break:break-word] [&_p]:m-0 [&_p]:mb-2 [&_a]:text-(--furtalk-accent) [&_img]:max-w-full [&_img]:h-auto ${
-            deleted ? 'ft-deleted text-(--furtalk-text-muted) italic' : ''
-          }"
+          class="${bodyClass} ${deleted ? 'ft-deleted text-(--furtalk-text-muted) italic' : ''}"
         >
           ${body}
         </div>
@@ -1672,7 +1717,7 @@ export class FurtalkCommentsElement extends LitElement {
           canReply || owned
             ? html`
                 <div
-                  class="ft-actions mt-1.5 flex items-center gap-2 text-[13px]"
+                  class="ft-actions mt-1 -ml-1.5 flex items-center gap-1 text-[13px]"
                 >
                   ${
                     canReply
@@ -1733,7 +1778,7 @@ export class FurtalkCommentsElement extends LitElement {
           replying && this.reply
             ? html`
                 <div
-                  class="ft-reply-form relative mt-2 p-2.5 border border-solid border-(--furtalk-border) rounded-(--furtalk-radius) grid gap-2 bg-(--furtalk-bg)"
+                  class="ft-reply-form relative mt-2 p-3 border border-solid border-(--furtalk-border) rounded-(--furtalk-radius) grid gap-2 bg-(--furtalk-bg) shadow-2xs"
                 >
                   ${this.renderComposerBody(this.reply, 'reply')}
                   <div class="ft-actions-row ${ACTIONS_ROW}">
@@ -1762,11 +1807,37 @@ export class FurtalkCommentsElement extends LitElement {
               `
             : nothing
         }
+      </div>
+    `
+  }
+
+  private renderNode(
+    node: CommentNode,
+    session: WidgetSession | undefined,
+  ): TemplateResult {
+    const isRoot = !node.parent_id || node.depth === 0
+    const descendants = this.collectDescendants(node)
+
+    return html`
+      <li class="ft-item flex flex-col py-3">
+        <div class="flex items-start gap-3 w-full">
+          ${this.renderCommentContent(node, session, isRoot)}
+        </div>
         ${
-          node.children.length
-            ? html`<ul class="ft-children ${CHILDREN_LIST}">
-                ${node.children.map((child) => this.renderNode(child, session))}
-              </ul>`
+          descendants.length > 0
+            ? html`
+                <ul
+                  class="${CHILDREN_LIST} ml-11 [@media(max-width:480px)]:ml-0"
+                >
+                  ${descendants.map(
+                    (descendant) => html`
+                      <li class="ft-item flex items-start gap-2.5 py-1.5">
+                        ${this.renderCommentContent(descendant, session, false)}
+                      </li>
+                    `,
+                  )}
+                </ul>
+              `
             : nothing
         }
       </li>
@@ -1854,7 +1925,7 @@ export class FurtalkCommentsElement extends LitElement {
         ${
           notice
             ? html`<div
-                class="ft-success border border-solid border-[#bbf7d0] bg-[#f0fdf4] text-[#166534] p-3 rounded-(--furtalk-radius) mb-3"
+                class="ft-success border border-solid border-[#bbf7d0] bg-[#f0fdf4] text-[#166534] p-3.5 rounded-(--furtalk-radius) mb-3 text-[13.5px]"
                 role="status"
               >
                 ${notice}
@@ -1885,7 +1956,7 @@ export class FurtalkCommentsElement extends LitElement {
         }
         ${this.renderRootComposer()}
         <div
-          class="ft-sort flex flex-wrap items-center gap-1 mb-3"
+          class="ft-sort flex flex-wrap items-center gap-1.5 mb-3.5"
           role="group"
           aria-label="评论排序"
         >

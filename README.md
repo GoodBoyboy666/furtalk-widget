@@ -5,8 +5,15 @@ Furtalk 评论组件。基于 Lit + Shadow DOM + Vite 构建，独立浏览器 E
 使用时只需加载托管的 ES module 并挂载自定义元素：
 
 ```html
-<script type="module" src="https://cdn.jsdelivr.net/npm/furtalk-widget/dist/furtalk.js"></script>
-<furtalk-comments site-id="123" page-key="article-2026-08" service-origin="https://comments.example.com"></furtalk-comments>
+<script
+  type="module"
+  src="https://cdn.jsdelivr.net/npm/furtalk-widget/dist/furtalk.js"
+></script>
+<furtalk-comments
+  site-id="123"
+  page-key="article-2026-08"
+  service-origin="https://comments.example.com"
+></furtalk-comments>
 ```
 
 ## 开发
@@ -29,13 +36,13 @@ pnpm check        # Prettier 格式检查
 
 ## 挂载属性
 
-| 属性 | 必填 | 说明 |
-| --- | --- | --- |
-| `site-id` | 是 | 站点 ID（正十进制 int64）。 |
-| `page-key` | 是 | 页面键；特殊值 `location` 由 `location.pathname + location.search` 推导，超过 512 字符返回 422。 |
-| `page-url` | 否 | 页面 URL，默认取宿主文档值。 |
-| `page-title` | 否 | 页面标题，默认取宿主文档值。 |
-| `service-origin` | 否 | Furtalk 服务源，默认从 `import.meta.url` 推导（开发 / CDN 布局可覆盖），必须是绝对 https origin（本地 http localhost 允许用于开发）。 |
+| 属性             | 必填 | 说明                                                                                                                                  |
+| ---------------- | ---- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `site-id`        | 是   | 站点 ID（正十进制 int64）。                                                                                                           |
+| `page-key`       | 是   | 页面键；特殊值 `location` 由 `location.pathname + location.search` 推导，超过 512 字符返回 422。                                      |
+| `page-url`       | 否   | 页面 URL，默认取宿主文档值。                                                                                                          |
+| `page-title`     | 否   | 页面标题，默认取宿主文档值。                                                                                                          |
+| `service-origin` | 否   | Furtalk 服务源，默认从 `import.meta.url` 推导（开发 / CDN 布局可覆盖），必须是绝对 https origin（本地 http localhost 允许用于开发）。 |
 
 ## 源码结构
 
