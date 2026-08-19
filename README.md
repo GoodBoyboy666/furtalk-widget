@@ -7,7 +7,7 @@ Furtalk 评论组件。基于 Lit + Shadow DOM + Vite 构建，独立浏览器 E
 ```html
 <script
   type="module"
-  src="https://cdn.jsdelivr.net/npm/furtalk-widget/dist/furtalk.js"
+  src="https://cdn.jsdelivr.net/npm/furtalk-widget/dist/furtalk.min.js"
 ></script>
 <furtalk-comments
   site-id="123"
@@ -26,7 +26,7 @@ pnpm dev
 ## 构建与质量检查
 
 ```bash
-pnpm build        # 生产构建（单个 ES module + sourcemap）
+pnpm build        # 生产构建（未压缩版 + 压缩版及各自的 sourcemap）
 pnpm test         # 单元测试（vitest）
 pnpm lint         # ESLint
 pnpm typecheck    # TypeScript 类型检查

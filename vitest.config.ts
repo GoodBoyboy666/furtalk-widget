@@ -1,6 +1,6 @@
 import { mergeConfig, defineConfig } from 'vitest/config'
 
-import viteConfig from './vite.config'
+import { sharedConfig } from './vite.config'
 
 // Merge the production Vite config so the Tailwind CSS transform (including
 // the ?inline stylesheet import) is shared between builds and tests instead of
@@ -8,7 +8,7 @@ import viteConfig from './vite.config'
 // CSS pipeline at all; without it ?inline CSS imports resolve to an empty
 // string and the compiled stylesheet assertions fail.
 export default mergeConfig(
-  viteConfig,
+  sharedConfig,
   defineConfig({
     test: {
       environment: 'jsdom',
