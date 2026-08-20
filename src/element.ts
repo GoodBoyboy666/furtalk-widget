@@ -151,17 +151,17 @@ const CHILDREN_LIST =
 
 /** Shared button chrome (sizing, focus ring); color/background are per kind. */
 const BASE_BUTTON =
-  'border border-solid rounded-(--furtalk-radius) px-2.5 py-1 cursor-pointer [font:inherit] text-[12px] font-medium transition-all duration-150 disabled:opacity-50 disabled:cursor-default focus-visible:outline-2 focus-visible:outline-(--furtalk-accent) focus-visible:outline-offset-1'
+  'border border-solid rounded-(--furtalk-radius) px-3.5 py-1.5 cursor-pointer [font:inherit] text-[13px] font-medium leading-5 transition-all duration-150 disabled:opacity-50 disabled:cursor-default focus-visible:outline-2 focus-visible:outline-(--furtalk-accent) focus-visible:outline-offset-1'
 
 /** Default button: bordered, muted background, inherits the theme text. */
 const DEFAULT_BUTTON =
   BASE_BUTTON +
-  ' border-(--furtalk-border) bg-(--furtalk-bg-muted) text-(--furtalk-text) hover:bg-(--furtalk-border)/40'
+  ' border-(--furtalk-border) bg-(--furtalk-bg) text-(--furtalk-text-muted) hover:text-(--furtalk-text) hover:bg-(--furtalk-bg-muted) active:scale-[0.98] shadow-2xs'
 
 /** Primary action button: accent fill with white text. */
 const PRIMARY_BUTTON =
   BASE_BUTTON +
-  ' border-(--furtalk-accent) bg-(--furtalk-accent) text-white hover:brightness-105 active:scale-[0.99] shadow-2xs'
+  ' border-(--furtalk-accent) bg-(--furtalk-accent) text-white hover:bg-(--furtalk-accent)/90 active:scale-[0.98] shadow-2xs'
 
 /** Borderless/transparent chrome for ghost buttons. */
 const GHOST_BUTTON =
@@ -169,10 +169,12 @@ const GHOST_BUTTON =
 
 /** Danger chrome (red text, no border); sizing is added per context. */
 const DANGER_CHROME =
-  'border-0 bg-transparent text-(--furtalk-danger) rounded-(--furtalk-radius) cursor-pointer [font:inherit] font-medium transition-all duration-150 disabled:opacity-50 disabled:cursor-default enabled:hover:bg-red-50 focus-visible:outline-2 focus-visible:outline-(--furtalk-accent) focus-visible:outline-offset-1'
+  'border-0 bg-transparent text-(--furtalk-danger) rounded-(--furtalk-radius) cursor-pointer [font:inherit] font-medium transition-all duration-150 disabled:opacity-50 disabled:cursor-default enabled:hover:bg-(--furtalk-bg-muted) focus-visible:outline-2 focus-visible:outline-(--furtalk-accent) focus-visible:outline-offset-1'
 
 /** Danger button outside the comment actions row (e.g. logout). */
-const DANGER_BUTTON = DANGER_CHROME + ' text-[12px] px-2.5 py-1'
+const DANGER_BUTTON =
+  GHOST_BUTTON +
+  ' text-(--furtalk-text-muted) text-[13px] px-3 py-1.5 leading-5 enabled:hover:text-(--furtalk-danger) enabled:hover:bg-(--furtalk-bg-muted) active:scale-[0.98]'
 
 /** Danger button inside the comment actions row (compact size). */
 const ACTION_DANGER_BUTTON = DANGER_CHROME + ' text-[12px] px-1.5 py-0.5'
@@ -182,10 +184,9 @@ const ACTION_BUTTON =
   GHOST_BUTTON +
   ' text-(--furtalk-text-muted) text-[12px] px-1.5 py-0.5 rounded-md enabled:hover:bg-(--furtalk-bg-muted) enabled:hover:text-(--furtalk-text)'
 
-/** Sort control buttons; the pressed button switches to the accent fill. */
+/** Sort control buttons within the segmented bar; pressed state gets active tab style. */
 const SORT_BUTTON =
-  GHOST_BUTTON +
-  ' text-(--furtalk-text-muted) text-[12px] px-2.5 py-1 hover:bg-(--furtalk-bg-muted) hover:text-(--furtalk-text) aria-pressed:bg-(--furtalk-accent) aria-pressed:text-white aria-pressed:font-semibold'
+  'border-0 bg-transparent text-(--furtalk-text-muted) text-[12px] px-2.5 py-1 rounded-[calc(var(--furtalk-radius)-2px)] cursor-pointer [font:inherit] font-medium transition-all duration-150 hover:text-(--furtalk-text) aria-pressed:bg-(--furtalk-bg) aria-pressed:text-(--furtalk-accent) aria-pressed:font-semibold aria-pressed:shadow-2xs focus-visible:outline-2 focus-visible:outline-(--furtalk-accent) focus-visible:outline-offset-1'
 
 /** OwO category tab buttons; the selected tab switches to the accent fill. */
 const OWO_TAB_BUTTON =
@@ -1520,7 +1521,9 @@ export class FurtalkCommentsElement extends LitElement {
         ${this.renderProfile()} ${this.renderComposerBody(this.root, 'root')}
         <div class="ft-actions-row ${ACTIONS_ROW}">
           ${this.renderOwoTrigger('root')}
-          <div class="ft-command-group flex flex-wrap items-center gap-2">
+          <div
+            class="ft-command-group flex flex-wrap items-center gap-2 ml-auto [@media(max-width:480px)]:ml-0 [@media(max-width:480px)]:justify-end"
+          >
             ${
               this.mode === 'authenticated' && this.authenticatedSessionValid
                 ? html`
@@ -1552,8 +1555,7 @@ export class FurtalkCommentsElement extends LitElement {
   private renderSortBarLink(): TemplateResult | typeof nothing {
     const origin = (this.config?.serviceOrigin ?? '').trim()
     const isAdmin =
-      this.state.session?.valid === true &&
-      this.state.session?.role === 'admin'
+      this.state.session?.valid === true && this.state.session?.role === 'admin'
 
     if (isAdmin) {
       const href = origin ? `${origin}/admin` : '/admin'
@@ -1821,7 +1823,7 @@ export class FurtalkCommentsElement extends LitElement {
                   <div class="ft-actions-row ${ACTIONS_ROW}">
                     ${this.renderOwoTrigger('reply')}
                     <div
-                      class="ft-command-group flex flex-wrap items-center gap-2"
+                      class="ft-command-group flex flex-wrap items-center gap-2 ml-auto [@media(max-width:480px)]:ml-0 [@media(max-width:480px)]:justify-end"
                     >
                       <button
                         type="button"
@@ -1993,11 +1995,13 @@ export class FurtalkCommentsElement extends LitElement {
         }
         ${this.renderRootComposer()}
         <div
-          class="ft-sort flex flex-wrap items-center justify-between gap-1.5 mb-3.5"
+          class="ft-sort flex flex-wrap items-center justify-between gap-2 mb-3.5"
           role="group"
           aria-label="评论排序"
         >
-          <div class="flex items-center gap-1.5">
+          <div
+            class="inline-flex items-center p-0.5 bg-(--furtalk-bg-muted) rounded-(--furtalk-radius) border border-solid border-(--furtalk-border)"
+          >
             <button
               type="button"
               class="${SORT_BUTTON}"

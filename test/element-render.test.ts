@@ -906,21 +906,24 @@ describe('FurtalkCommentsElement composer command group', () => {
     expect(group?.querySelector('button')?.textContent?.trim()).toBe('发表评论')
   })
 
-  it('hides the expression trigger without a configured catalog URL', () => {
+  it('hides the expression trigger without a configured catalog URL and keeps commands right aligned', () => {
     const host = composerHost('anonymous', hints)
     const group = host.querySelector('.ft-command-group')
     expect(group?.textContent).not.toContain('无需登录')
+    expect(group?.classList.contains('ml-auto')).toBe(true)
     // 未配置远程目录时不渲染表情触发器。
     expect(host.querySelector('.ft-owo-trigger')).toBeNull()
   })
 
-  it('shows the expression trigger when a catalog URL is configured', () => {
+  it('shows the expression trigger when a catalog URL is configured and keeps commands right aligned', () => {
     const host = composerHost('anonymous', hints, undefined, {
       owo_catalog_url: 'https://cdn.example/owo.json',
     })
     const trigger = host.querySelector<HTMLButtonElement>('.ft-owo-trigger')
     expect(trigger).not.toBeNull()
     expect(trigger?.querySelector('.ft-owo-icon')).not.toBeNull()
+    const group = host.querySelector('.ft-command-group')
+    expect(group?.classList.contains('ml-auto')).toBe(true)
   })
 
   it('groups the reply composer cancel and submit actions together', () => {
@@ -1157,12 +1160,14 @@ describe('FurtalkCommentsElement authored stylesheet boundary', () => {
 })
 
 describe('FurtalkCommentsElement sort control', () => {
-  it('renders asc and desc buttons with the active direction pressed', () => {
+  it('renders asc and desc buttons with the active direction pressed inside a segmented container', () => {
     const host = readyViewHost({ sort: 'desc' })
     const asc = host.querySelector<HTMLButtonElement>('[data-sort="asc"]')
     const desc = host.querySelector<HTMLButtonElement>('[data-sort="desc"]')
     expect(asc).not.toBeNull()
     expect(desc).not.toBeNull()
+    expect(asc?.parentElement).toBe(desc?.parentElement)
+    expect(asc?.parentElement?.classList.contains('inline-flex')).toBe(true)
     expect(asc?.getAttribute('aria-pressed')).toBe('false')
     expect(desc?.getAttribute('aria-pressed')).toBe('true')
     expect(asc?.textContent?.trim()).toBe('最早优先')
