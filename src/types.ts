@@ -100,6 +100,7 @@ export interface WidgetSession {
   credential_mode?: 'authenticated'
   user_id?: string
   site_id?: string
+  role?: 'admin' | 'user'
   expires_at?: string
 }
 

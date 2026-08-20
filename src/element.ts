@@ -151,7 +151,7 @@ const CHILDREN_LIST =
 
 /** Shared button chrome (sizing, focus ring); color/background are per kind. */
 const BASE_BUTTON =
-  'border border-solid rounded-(--furtalk-radius) px-3.5 py-[7px] cursor-pointer [font:inherit] font-medium transition-all duration-150 disabled:opacity-50 disabled:cursor-default focus-visible:outline-2 focus-visible:outline-(--furtalk-accent) focus-visible:outline-offset-1'
+  'border border-solid rounded-(--furtalk-radius) px-2.5 py-1 cursor-pointer [font:inherit] text-[12px] font-medium transition-all duration-150 disabled:opacity-50 disabled:cursor-default focus-visible:outline-2 focus-visible:outline-(--furtalk-accent) focus-visible:outline-offset-1'
 
 /** Default button: bordered, muted background, inherits the theme text. */
 const DEFAULT_BUTTON =
@@ -161,7 +161,7 @@ const DEFAULT_BUTTON =
 /** Primary action button: accent fill with white text. */
 const PRIMARY_BUTTON =
   BASE_BUTTON +
-  ' border-(--furtalk-accent) bg-(--furtalk-accent) text-white text-[13px] hover:brightness-105 active:scale-[0.99] shadow-2xs'
+  ' border-(--furtalk-accent) bg-(--furtalk-accent) text-white hover:brightness-105 active:scale-[0.99] shadow-2xs'
 
 /** Borderless/transparent chrome for ghost buttons. */
 const GHOST_BUTTON =
@@ -172,7 +172,7 @@ const DANGER_CHROME =
   'border-0 bg-transparent text-(--furtalk-danger) rounded-(--furtalk-radius) cursor-pointer [font:inherit] font-medium transition-all duration-150 disabled:opacity-50 disabled:cursor-default enabled:hover:bg-red-50 focus-visible:outline-2 focus-visible:outline-(--furtalk-accent) focus-visible:outline-offset-1'
 
 /** Danger button outside the comment actions row (e.g. logout). */
-const DANGER_BUTTON = DANGER_CHROME + ' text-[13px] px-3.5 py-[7px]'
+const DANGER_BUTTON = DANGER_CHROME + ' text-[12px] px-2.5 py-1'
 
 /** Danger button inside the comment actions row (compact size). */
 const ACTION_DANGER_BUTTON = DANGER_CHROME + ' text-[12px] px-1.5 py-0.5'
@@ -1549,6 +1549,43 @@ export class FurtalkCommentsElement extends LitElement {
     `
   }
 
+  private renderSortBarLink(): TemplateResult | typeof nothing {
+    const origin = (this.config?.serviceOrigin ?? '').trim()
+    const isAdmin =
+      this.state.session?.valid === true &&
+      this.state.session?.role === 'admin'
+
+    if (isAdmin) {
+      const href = origin ? `${origin}/admin` : '/admin'
+      return html`
+        <a
+          class="ft-portal-link text-(--furtalk-text-muted) hover:text-(--furtalk-accent) text-[12px] no-underline hover:underline transition-colors ml-auto"
+          href=${href}
+          target="_blank"
+          rel="noreferrer noopener"
+        >
+          后台管理
+        </a>
+      `
+    }
+
+    if (this.mode === 'authenticated') {
+      const href = origin ? `${origin}/account/comments` : '/account/comments'
+      return html`
+        <a
+          class="ft-portal-link text-(--furtalk-text-muted) hover:text-(--furtalk-accent) text-[12px] no-underline hover:underline transition-colors ml-auto"
+          href=${href}
+          target="_blank"
+          rel="noreferrer noopener"
+        >
+          我的评论
+        </a>
+      `
+    }
+
+    return nothing
+  }
+
   // renderCaptchaMask 渲染 Shadow DOM 内的验证码掩膜层。
   // 掩膜只在某个 composer 需要验证码且没有有效 token 时出现，包含稳定的
   // 宿主容器、取消按钮与 pending action 文案；掩膜遮挡下方 Widget 交互。
@@ -1956,40 +1993,45 @@ export class FurtalkCommentsElement extends LitElement {
         }
         ${this.renderRootComposer()}
         <div
-          class="ft-sort flex flex-wrap items-center gap-1.5 mb-3.5"
+          class="ft-sort flex flex-wrap items-center justify-between gap-1.5 mb-3.5"
           role="group"
           aria-label="评论排序"
         >
-          <button
-            type="button"
-            class="${SORT_BUTTON}"
-            data-sort="asc"
-            aria-pressed=${this.state.sort === 'asc'}
-            @click=${() => this.changeSort('asc')}
-          >
-            最早优先
-          </button>
-          <button
-            type="button"
-            class="${SORT_BUTTON}"
-            data-sort="desc"
-            aria-pressed=${this.state.sort === 'desc'}
-            @click=${() => this.changeSort('desc')}
-          >
-            最新优先
-          </button>
+          <div class="flex items-center gap-1.5">
+            <button
+              type="button"
+              class="${SORT_BUTTON}"
+              data-sort="asc"
+              aria-pressed=${this.state.sort === 'asc'}
+              @click=${() => this.changeSort('asc')}
+            >
+              最早优先
+            </button>
+            <button
+              type="button"
+              class="${SORT_BUTTON}"
+              data-sort="desc"
+              aria-pressed=${this.state.sort === 'desc'}
+              @click=${() => this.changeSort('desc')}
+            >
+              最新优先
+            </button>
+          </div>
+          ${this.renderSortBarLink()}
         </div>
         ${
-          tree.length === 0
-            ? html`<div class="${STATE_TEXT}">还没有评论，来抢沙发吧</div>`
-            : html`
-                <ul class="ft-list list-none m-0 p-0">
-                  ${tree.map((node) => this.renderNode(node, session))}
-                </ul>
-              `
+          this.state.loadingComments
+            ? html`<div class="${STATE_TEXT}">加载中…</div>`
+            : tree.length === 0
+              ? html`<div class="${STATE_TEXT}">还没有评论，来抢沙发吧</div>`
+              : html`
+                  <ul class="ft-list list-none m-0 p-0">
+                    ${tree.map((node) => this.renderNode(node, session))}
+                  </ul>
+                `
         }
         ${
-          hasNextPage(thread)
+          !this.state.loadingComments && hasNextPage(thread)
             ? html`
                 <div class="ft-loadmore flex mt-2">
                   <button

@@ -225,7 +225,8 @@ describe('widgetReducer', () => {
     expect(state.comments).toEqual([])
     expect(state.nextCursor).toBeNull()
     expect(state.thread).toBeUndefined()
-    expect(state.status).toBe('loading-thread')
+    expect(state.status).toBe('ready')
+    expect(state.loadingComments).toBe(true)
   })
 
   it('keeps the current state when switching to the same direction', () => {

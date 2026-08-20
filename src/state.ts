@@ -68,6 +68,7 @@ export interface WidgetState {
   sort: CommentSort
   session?: WidgetSession
   loadingMore: boolean
+  loadingComments?: boolean
   error?: WidgetError
   authPhase: AuthPhase
   pendingAction?: PendingAction
@@ -81,6 +82,7 @@ export const initialState: WidgetState = {
   nextCursor: null,
   sort: 'asc',
   loadingMore: false,
+  loadingComments: false,
   authPhase: 'idle',
 }
 
@@ -130,6 +132,9 @@ export function widgetReducer(
         sort: action.config.comment_sort === 'desc' ? 'desc' : 'asc',
       }
     case 'thread/loading':
+      if (state.status === 'ready') {
+        return { ...state, loadingComments: true, error: undefined }
+      }
       return { ...state, status: 'loading-thread' }
     case 'thread/loaded':
       return {
@@ -139,6 +144,7 @@ export function widgetReducer(
         comments: action.thread.comments,
         nextCursor: action.thread.next_cursor,
         loadingMore: false,
+        loadingComments: false,
         error: undefined,
       }
     case 'thread/load-more':
@@ -151,17 +157,19 @@ export function widgetReducer(
         comments,
         nextCursor: action.thread.next_cursor,
         loadingMore: false,
+        loadingComments: false,
       }
     }
     case 'sort/change': {
       if (state.sort === action.sort) return state
       // A cursor is only valid for the direction that produced it: switching
       // discards the old cursor and visible comments and reloads the first
-      // page along the new direction.
+      // page along the new direction without unmounting the widget surface.
       return {
         ...state,
         sort: action.sort,
-        status: 'loading-thread',
+        status: state.status === 'ready' ? 'ready' : state.status,
+        loadingComments: true,
         thread: undefined,
         comments: [],
         nextCursor: null,
@@ -226,7 +234,13 @@ export function widgetReducer(
     case 'notice/clear':
       return { ...state, notice: undefined }
     case 'error':
-      return { ...state, status: 'error', error: action.error }
+      return {
+        ...state,
+        status: 'error',
+        error: action.error,
+        loadingComments: false,
+        loadingMore: false,
+      }
     default:
       return state
   }

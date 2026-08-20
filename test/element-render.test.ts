@@ -1190,6 +1190,106 @@ describe('FurtalkCommentsElement sort control', () => {
     ).toBe(true)
     expect(sort?.nextElementSibling?.classList.contains('ft-state')).toBe(true)
   })
+
+  it('does not render portal link for anonymous mode regular visitors', () => {
+    const host = readyViewHost({
+      config: {
+        site_id: '1',
+        name: 'Site',
+        comment_mode: 'anonymous',
+        moderation: 'direct',
+        user_delete_mode: 'soft',
+        max_reply_depth: 5,
+        captcha: { comment: { required: false } },
+      },
+      session: { valid: false },
+    })
+    expect(host.querySelector('.ft-portal-link')).toBeNull()
+  })
+
+  it('renders 后台管理 link for anonymous mode administrators', () => {
+    const host = readyViewHost({
+      config: {
+        site_id: '1',
+        name: 'Site',
+        comment_mode: 'anonymous',
+        moderation: 'direct',
+        user_delete_mode: 'soft',
+        max_reply_depth: 5,
+        captcha: { comment: { required: false } },
+      },
+      session: {
+        valid: true,
+        credential_mode: 'authenticated',
+        role: 'admin',
+      },
+    })
+    const link = host.querySelector<HTMLAnchorElement>('.ft-portal-link')
+    expect(link).not.toBeNull()
+    expect(link?.textContent?.trim()).toBe('后台管理')
+    expect(link?.getAttribute('href')).toContain('/admin')
+    expect(link?.getAttribute('target')).toBe('_blank')
+  })
+
+  it('renders 我的评论 link for authenticated mode normal users', () => {
+    const host = readyViewHost({
+      config: {
+        site_id: '1',
+        name: 'Site',
+        comment_mode: 'authenticated',
+        moderation: 'direct',
+        user_delete_mode: 'soft',
+        max_reply_depth: 5,
+        captcha: { comment: { required: false } },
+      },
+      session: {
+        valid: true,
+        credential_mode: 'authenticated',
+        role: 'user',
+      },
+    })
+    const link = host.querySelector<HTMLAnchorElement>('.ft-portal-link')
+    expect(link).not.toBeNull()
+    expect(link?.textContent?.trim()).toBe('我的评论')
+    expect(link?.getAttribute('href')).toContain('/account/comments')
+    expect(link?.getAttribute('target')).toBe('_blank')
+  })
+
+  it('renders 后台管理 link for authenticated mode administrators', () => {
+    const host = readyViewHost({
+      config: {
+        site_id: '1',
+        name: 'Site',
+        comment_mode: 'authenticated',
+        moderation: 'direct',
+        user_delete_mode: 'soft',
+        max_reply_depth: 5,
+        captcha: { comment: { required: false } },
+      },
+      session: {
+        valid: true,
+        credential_mode: 'authenticated',
+        role: 'admin',
+      },
+    })
+    const link = host.querySelector<HTMLAnchorElement>('.ft-portal-link')
+    expect(link).not.toBeNull()
+    expect(link?.textContent?.trim()).toBe('后台管理')
+    expect(link?.getAttribute('href')).toContain('/admin')
+    expect(link?.getAttribute('target')).toBe('_blank')
+  })
+
+  it('keeps the composer and sort control mounted while loading comments on sort change', () => {
+    const host = readyViewHost({
+      loadingComments: true,
+      comments: [],
+    })
+    expect(host.querySelector('.ft-composer')).not.toBeNull()
+    expect(host.querySelector('.ft-sort')).not.toBeNull()
+    const stateEl = host.querySelector('.ft-state')
+    expect(stateEl).not.toBeNull()
+    expect(stateEl?.textContent).toContain('加载中…')
+  })
 })
 
 describe('FurtalkCommentsElement comment item styling', () => {
