@@ -219,7 +219,7 @@ const STATE_ERROR =
 
 /** Text inputs and textarea baseline. */
 const INPUT_TEXT =
-  '[font:inherit] border-0 rounded-none px-3 py-2 bg-(--furtalk-bg) text-(--furtalk-text) min-w-0 w-full'
+  '[font:inherit] border-0 rounded-none px-3 py-2 bg-(--furtalk-bg) text-(--furtalk-text) min-w-0 w-full outline-none focus:outline-none'
 
 /** Root widget surface. */
 const WIDGET_ROOT =
@@ -1222,7 +1222,7 @@ export class FurtalkCommentsElement extends LitElement {
         <div class="ft-field grid min-w-0">
           <input
             id="ft-nickname"
-            class="ft-input ${INPUT_TEXT} rounded-l-(--furtalk-radius) focus:bg-(--furtalk-bg)"
+            class="ft-input ${INPUT_TEXT} rounded-l-(--furtalk-radius) focus:bg-(--furtalk-bg) focus:outline-none focus:ring-0"
             type="text"
             autocomplete="nickname"
             maxlength="100"
@@ -1240,7 +1240,7 @@ export class FurtalkCommentsElement extends LitElement {
         <div class="ft-field grid min-w-0 ${FIELD_DIVIDER}">
           <input
             id="ft-email"
-            class="ft-input ${INPUT_TEXT} focus:bg-(--furtalk-bg)"
+            class="ft-input ${INPUT_TEXT} focus:bg-(--furtalk-bg) focus:outline-none focus:ring-0"
             type="email"
             autocomplete="email"
             placeholder="邮箱"
@@ -1257,7 +1257,7 @@ export class FurtalkCommentsElement extends LitElement {
         <div class="ft-field grid min-w-0 ${FIELD_DIVIDER}">
           <input
             id="ft-website"
-            class="ft-input ${INPUT_TEXT} rounded-r-(--furtalk-radius) focus:bg-(--furtalk-bg)"
+            class="ft-input ${INPUT_TEXT} rounded-r-(--furtalk-radius) focus:bg-(--furtalk-bg) focus:outline-none focus:ring-0"
             type="url"
             autocomplete="url"
             placeholder="网站（可选）"
