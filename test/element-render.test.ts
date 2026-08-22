@@ -94,6 +94,58 @@ describe('FurtalkCommentsElement Markdown boundary', () => {
     expect(host.innerHTML).toContain('&lt;img')
     expect((window as { __xss?: number }).__xss).toBeUndefined()
   })
+
+  it('expands a known emoji image token from the shared catalog', () => {
+    const tagName = 'furtalk-comments-render-test'
+    if (!customElements.get(tagName)) {
+      customElements.define(tagName, FurtalkCommentsElement)
+    }
+    const element = document.createElement(tagName) as unknown as {
+      renderNode(n: CommentNode, s?: WidgetSession): TemplateResult
+      deletingId: string | null
+      emojiCatalog: {
+        packs: unknown[]
+        imageByToken: Map<string, { id: string; name: string; src: string }>
+      }
+    }
+    element.deletingId = null
+    element.emojiCatalog = {
+      packs: [],
+      imageByToken: new Map([
+        [
+          'happy',
+          {
+            id: 'happy',
+            name: '开心',
+            src: 'https://cdn.example/emoji/aru/happy.webp',
+          },
+        ],
+      ]),
+    }
+    const host = document.createElement('div')
+    render(
+      element.renderNode(
+        node({ id: '4', body: 'hello :happy: world' }),
+        undefined,
+      ),
+      host,
+    )
+    const img = host.querySelector<HTMLImageElement>('.ft-emoji-image')
+    expect(img).not.toBeNull()
+    expect(img?.getAttribute('src')).toBe(
+      'https://cdn.example/emoji/aru/happy.webp',
+    )
+    expect(img?.getAttribute('alt')).toBe('开心')
+    expect(img?.getAttribute('loading')).toBe('lazy')
+  })
+
+  it('keeps unknown emoji tokens literal without a catalog', () => {
+    const host = renderNodeHost(
+      node({ id: '5', body: 'still :happy: literal' }),
+    )
+    expect(host.querySelector('.ft-emoji-image')).toBeNull()
+    expect(host.textContent).toContain(':happy:')
+  })
 })
 
 describe('FurtalkCommentsElement administrator Badge', () => {
@@ -933,16 +985,16 @@ describe('FurtalkCommentsElement composer command group', () => {
     expect(group?.textContent).not.toContain('无需登录')
     expect(group?.classList.contains('ml-auto')).toBe(true)
     // 未配置远程目录时不渲染表情触发器。
-    expect(host.querySelector('.ft-owo-trigger')).toBeNull()
+    expect(host.querySelector('.ft-emoji-trigger')).toBeNull()
   })
 
   it('shows the expression trigger when a catalog URL is configured and keeps commands right aligned', () => {
     const host = composerHost('anonymous', hints, undefined, {
-      owo_catalog_url: 'https://cdn.example/owo.json',
+      emoji_catalog_url: 'https://cdn.example/emoji.json',
     })
-    const trigger = host.querySelector<HTMLButtonElement>('.ft-owo-trigger')
+    const trigger = host.querySelector<HTMLButtonElement>('.ft-emoji-trigger')
     expect(trigger).not.toBeNull()
-    expect(trigger?.querySelector('.ft-owo-icon')).not.toBeNull()
+    expect(trigger?.querySelector('.ft-emoji-icon')).not.toBeNull()
     const group = host.querySelector('.ft-command-group')
     expect(group?.classList.contains('ml-auto')).toBe(true)
   })

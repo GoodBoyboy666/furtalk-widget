@@ -29,7 +29,7 @@ export { parseWidgetConfig } from './config'
 export { widgetReducer, initialState } from './state'
 export { createProfileStore } from './storage'
 export { validateProfileHints } from './profile'
-export { renderMarkdown } from './markdown'
+export { renderCommentContent } from './emoji-renderer'
 export {
   acceptAuthorizationMessage,
   authorizationUrl,

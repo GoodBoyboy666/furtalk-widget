@@ -52,6 +52,6 @@ pnpm check        # Prettier 格式检查
 - `src/captcha.ts` — CAPTCHA provider 渲染。
 - `src/comments.ts` / `src/state.ts` / `src/storage.ts` — 评论树、状态 reducer
   与 profile 本地存储。
-- `src/owo.ts` / `src/markdown.ts` / `src/insertion.ts` — 远程表情目录、
-  Markdown 渲染与文本插入。
+- `src/emoji.ts` / `src/emoji-renderer.ts` / `src/insertion.ts` — 远程表情目录
+  （emoji-pack 协议）、安全 Markdown + 图片 token 渲染与文本插入。
 - `src/styles.css` — Tailwind 样式入口，经 Vite 编译后以字符串内联进 Shadow DOM。

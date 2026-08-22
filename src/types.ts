@@ -36,11 +36,11 @@ export interface RuntimeConfig {
    */
   comment_sort?: CommentSort
   /**
-   * Optional instance-wide OwO-compatible expression catalog URL. When present
-   * the widget fetches it live on boot and uses it as the sole catalog; an
-   * absent/empty value means the expression picker is not shown.
+   * Optional instance-wide Furtalk emoji-pack catalog URL. When present the
+   * widget fetches it live on boot and uses it as the sole catalog; an
+   * absent/empty value means the emoji picker is not shown.
    */
-  owo_catalog_url?: string
+  emoji_catalog_url?: string
   captcha: {
     comment: CaptchaProjection
   }

@@ -40,8 +40,8 @@ import {
 import type { WidgetConfig } from './config'
 import { parseWidgetConfig } from './config'
 import { toWidgetError, WidgetError } from './errors'
-import { renderMarkdown } from './markdown'
-import { loadCatalog, type EmojiGroup, type EmojiItem } from './owo'
+import { loadEmojiCatalog, type EmojiCatalog, type EmojiItem } from './emoji'
+import { renderCommentContent as renderCommentBody } from './emoji-renderer'
 import { insertAtSelection } from './insertion'
 import { validateProfileHints } from './profile'
 import {
@@ -188,17 +188,17 @@ const ACTION_BUTTON =
 const SORT_BUTTON =
   'border-0 bg-transparent text-(--furtalk-text-muted) text-[12px] px-2.5 py-1 rounded-[calc(var(--furtalk-radius)-2px)] cursor-pointer [font:inherit] font-medium transition-all duration-150 hover:text-(--furtalk-text) aria-pressed:bg-(--furtalk-bg) aria-pressed:text-(--furtalk-accent) aria-pressed:font-semibold aria-pressed:shadow-2xs focus-visible:outline-2 focus-visible:outline-(--furtalk-accent) focus-visible:outline-offset-1'
 
-/** OwO category tab buttons; the selected tab switches to the accent fill. */
-const OWO_TAB_BUTTON =
+/** Emoji category tab buttons; the selected tab switches to the accent fill. */
+const EMOJI_TAB_BUTTON =
   GHOST_BUTTON +
   ' text-(--furtalk-text-muted) text-[12px] px-2.5 py-[4px] hover:bg-(--furtalk-bg-muted) hover:text-(--furtalk-text) aria-selected:bg-(--furtalk-accent) aria-selected:text-white aria-selected:font-medium'
 
-/** OwO emoji item buttons. */
-const OWO_ITEM_BUTTON =
+/** Emoji item buttons. */
+const EMOJI_ITEM_BUTTON =
   'inline-flex items-center justify-start min-h-8 max-w-full px-2 py-1 border-0 bg-transparent text-[14px] leading-none whitespace-nowrap cursor-pointer [font:inherit] rounded-md transition-colors hover:bg-(--furtalk-bg)'
 
-/** OwO picker trigger button. */
-const OWO_TRIGGER_BUTTON =
+/** Emoji picker trigger button. */
+const EMOJI_TRIGGER_BUTTON =
   'inline-flex items-center p-1.5 border-0 bg-transparent text-(--furtalk-text-muted) rounded-(--furtalk-radius) cursor-pointer [font:inherit] transition-colors hover:text-(--furtalk-text) hover:bg-(--furtalk-bg-muted) aria-expanded:text-(--furtalk-accent) aria-expanded:bg-(--furtalk-bg-muted) focus-visible:outline-2 focus-visible:outline-(--furtalk-accent) focus-visible:outline-offset-1'
 
 /** Load-more button. */
@@ -288,20 +288,20 @@ export class FurtalkCommentsElement extends LitElement {
   /** One-shot resume of the pending composer action after the mask solves. */
   private pendingMaskedSubmit: (() => void) | null = null
 
-  /** Remote catalog used by the picker; empty until a URL is configured. */
-  private owoCatalog: EmojiGroup[] = []
+  /** Remote emoji-pack catalog used by the picker; empty until configured. */
+  private emojiCatalog: EmojiCatalog | null = null
   /** Catalog load state; failures never block commenting. */
-  private owoState: 'idle' | 'loading' | 'ready' | 'error' = 'idle'
-  /** Picker panel currently open; one panel at a time. */
-  private owoOpenKey: 'root' | 'reply' | null = null
+  private emojiState: 'idle' | 'loading' | 'ready' | 'error' = 'idle'
+  /** Emoji panel currently open; one panel at a time. */
+  private emojiOpenKey: 'root' | 'reply' | null = null
   /** Previous open key, used to restore focus to the triggering composer. */
-  private lastOwoOpenKey: 'root' | 'reply' | null = null
-  /** Active category tab label within the picker. */
-  private owoActiveTab = ''
+  private lastEmojiOpenKey: 'root' | 'reply' | null = null
+  /** Active category tab id within the emoji panel. */
+  private emojiActiveTab = ''
   /** Pending catalog load identity; stale completions are ignored. */
-  private owoLoadToken = 0
+  private emojiLoadToken = 0
   /** Aborts the in-flight catalog request on reboot/retry/disconnect. */
-  private owoAbort: AbortController | null = null
+  private emojiAbort: AbortController | null = null
 
   override connectedCallback(): void {
     super.connectedCallback()
@@ -326,11 +326,11 @@ export class FurtalkCommentsElement extends LitElement {
     this.captchaMaskKey = null
     this.lastMaskKey = null
     this.pendingMaskedSubmit = null
-    this.owoOpenKey = null
-    this.lastOwoOpenKey = null
-    this.owoLoadToken += 1
-    this.owoAbort?.abort()
-    this.owoAbort = null
+    this.emojiOpenKey = null
+    this.lastEmojiOpenKey = null
+    this.emojiLoadToken += 1
+    this.emojiAbort?.abort()
+    this.emojiAbort = null
   }
 
   /** Boots the widget: parse config, load runtime config, thread and session. */
@@ -345,14 +345,14 @@ export class FurtalkCommentsElement extends LitElement {
     this.captchaMaskKey = null
     this.lastMaskKey = null
     this.pendingMaskedSubmit = null
-    this.owoCatalog = []
-    this.owoState = 'idle'
-    this.owoOpenKey = null
-    this.lastOwoOpenKey = null
-    this.owoActiveTab = ''
-    this.owoLoadToken += 1
-    this.owoAbort?.abort()
-    this.owoAbort = null
+    this.emojiCatalog = null
+    this.emojiState = 'idle'
+    this.emojiOpenKey = null
+    this.lastEmojiOpenKey = null
+    this.emojiActiveTab = ''
+    this.emojiLoadToken += 1
+    this.emojiAbort?.abort()
+    this.emojiAbort = null
     const parsed = parseWidgetConfig(
       {
         'site-id': this.siteId,
@@ -386,7 +386,7 @@ export class FurtalkCommentsElement extends LitElement {
       const config = await this.api.runtimeConfig(this.config.siteId)
       this.state = widgetReducer(this.state, { type: 'config/loaded', config })
       this.requestUpdate()
-      this.startCatalogLoad(config)
+      this.startEmojiLoad(config)
       await this.loadPage()
       await this.probeSession()
     } catch (error) {
@@ -394,54 +394,54 @@ export class FurtalkCommentsElement extends LitElement {
     }
   }
 
-  // startCatalogLoad 在运行时配置可用后独立启动远程目录加载。
+  // startEmojiLoad 在运行时配置可用后独立启动远程表情目录加载。
   // 未配置 URL 时保持空目录（触发器隐藏）；失败不进入全局 fail 路径，
   // 错误只在选择器内提示并可重试。
-  private startCatalogLoad(config: RuntimeConfig): void {
-    const url = (config.owo_catalog_url ?? '').trim()
+  private startEmojiLoad(config: RuntimeConfig): void {
+    const url = (config.emoji_catalog_url ?? '').trim()
     if (url === '') {
-      this.owoCatalog = []
-      this.owoState = 'idle'
-      this.owoActiveTab = ''
+      this.emojiCatalog = null
+      this.emojiState = 'idle'
+      this.emojiActiveTab = ''
       return
     }
-    this.owoState = 'loading'
-    this.owoActiveTab = ''
-    const token = ++this.owoLoadToken
-    this.owoAbort?.abort()
-    this.owoAbort = new AbortController()
-    void this.loadCatalogToken(url, token)
+    this.emojiState = 'loading'
+    this.emojiActiveTab = ''
+    const token = ++this.emojiLoadToken
+    this.emojiAbort?.abort()
+    this.emojiAbort = new AbortController()
+    void this.loadEmojiToken(url, token)
   }
 
-  private async loadCatalogToken(url: string, token: number): Promise<void> {
-    const signal = this.owoAbort?.signal
+  private async loadEmojiToken(url: string, token: number): Promise<void> {
+    const signal = this.emojiAbort?.signal
     try {
-      const groups = await loadCatalog({ url, signal })
-      if (token !== this.owoLoadToken) return
-      this.owoCatalog = groups
-      this.owoState = 'ready'
-      const first = this.owoCatalog[0]
+      const catalog = await loadEmojiCatalog({ url, signal })
+      if (token !== this.emojiLoadToken) return
+      this.emojiCatalog = catalog
+      this.emojiState = 'ready'
+      const first = this.emojiCatalog.packs[0]
       if (first) {
-        this.owoActiveTab = first.id
+        this.emojiActiveTab = first.id
       }
       this.requestUpdate()
     } catch {
-      if (token !== this.owoLoadToken) return
+      if (token !== this.emojiLoadToken) return
       // 目录失败非致命：保留空目录并展示重试，评论工作流不受影响。
-      this.owoState = 'error'
+      this.emojiState = 'error'
       this.requestUpdate()
     }
   }
 
-  private retryCatalogLoad(): void {
+  private retryEmojiLoad(): void {
     if (!this.config) return
-    this.owoAbort?.abort()
-    this.owoAbort = new AbortController()
-    this.loadCatalogToken(
-      (this.state.config?.owo_catalog_url ?? '').trim(),
-      ++this.owoLoadToken,
+    this.emojiAbort?.abort()
+    this.emojiAbort = new AbortController()
+    this.loadEmojiToken(
+      (this.state.config?.emoji_catalog_url ?? '').trim(),
+      ++this.emojiLoadToken,
     )
-    this.owoState = 'loading'
+    this.emojiState = 'loading'
     this.requestUpdate()
   }
 
@@ -1120,8 +1120,8 @@ export class FurtalkCommentsElement extends LitElement {
     if (this.captchaMaskKey === 'reply') {
       this.cancelCaptchaMask()
     }
-    if (this.owoOpenKey === 'reply') {
-      this.owoOpenKey = null
+    if (this.emojiOpenKey === 'reply') {
+      this.emojiOpenKey = null
     }
     this.teardownCaptcha(this.composerKey(this.reply))
     this.reply = null
@@ -1281,7 +1281,7 @@ export class FurtalkCommentsElement extends LitElement {
   ): TemplateResult {
     const busy =
       this.state.status === 'creating' || this.state.status === 'deleting'
-    const panelOpen = this.owoOpenKey === key
+    const panelOpen = this.emojiOpenKey === key
     return html`
       <textarea
         class="ft-textarea ${INPUT_TEXT} min-h-[90px] resize-y [border-bottom:1px_solid_var(--furtalk-border)] focus:outline-2 focus:outline-(--furtalk-accent) focus:outline-offset-1 text-[14px] leading-relaxed"
@@ -1295,7 +1295,7 @@ export class FurtalkCommentsElement extends LitElement {
           this.requestUpdate()
         }}
       ></textarea>
-      ${panelOpen ? this.renderOwoPanel(key) : nothing}
+      ${panelOpen ? this.renderEmojiPanel(key) : nothing}
       ${
         composer.error
           ? html`<p
@@ -1316,28 +1316,28 @@ export class FurtalkCommentsElement extends LitElement {
     `
   }
 
-  /** Whether a remote expression catalog URL is configured; the picker is only
+  /** Whether a remote emoji-pack catalog URL is configured; the picker is only
    *  offered when a deployer-supplied catalog is available. */
-  private get hasOwoCatalog(): boolean {
-    return (this.state.config?.owo_catalog_url ?? '').trim() !== ''
+  private get hasEmojiCatalog(): boolean {
+    return (this.state.config?.emoji_catalog_url ?? '').trim() !== ''
   }
 
-  private renderOwoTrigger(
+  private renderEmojiTrigger(
     key: 'root' | 'reply',
   ): TemplateResult | typeof nothing {
-    if (!this.hasOwoCatalog) return nothing
-    const panelOpen = this.owoOpenKey === key
+    if (!this.hasEmojiCatalog) return nothing
+    const panelOpen = this.emojiOpenKey === key
     return html`
       <button
         type="button"
-        class="ft-owo-trigger ${OWO_TRIGGER_BUTTON}"
+        class="ft-emoji-trigger ${EMOJI_TRIGGER_BUTTON}"
         aria-label="表情"
         aria-expanded=${panelOpen}
-        aria-controls="ft-owo-panel-${key}"
-        @click=${() => this.toggleOwoPanel(key)}
+        aria-controls="ft-emoji-panel-${key}"
+        @click=${() => this.toggleEmojiPanel(key)}
       >
         <svg
-          class="ft-owo-icon size-[18px]"
+          class="ft-emoji-icon size-[18px]"
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
@@ -1355,83 +1355,81 @@ export class FurtalkCommentsElement extends LitElement {
     `
   }
 
-  private toggleOwoPanel(key: 'root' | 'reply'): void {
-    this.owoOpenKey = this.owoOpenKey === key ? null : key
+  private toggleEmojiPanel(key: 'root' | 'reply'): void {
+    this.emojiOpenKey = this.emojiOpenKey === key ? null : key
     this.requestUpdate()
   }
 
-  private closeOwoPanel(): void {
-    this.owoOpenKey = null
+  private closeEmojiPanel(): void {
+    this.emojiOpenKey = null
     this.requestUpdate()
   }
 
-  private renderOwoPanel(key: 'root' | 'reply'): TemplateResult {
-    const groups = this.owoCatalog
+  private renderEmojiPanel(key: 'root' | 'reply'): TemplateResult {
+    const packs = this.emojiCatalog?.packs ?? []
     const activeTab =
-      this.owoActiveTab &&
-      groups.some((group) => group.id === this.owoActiveTab)
-        ? this.owoActiveTab
-        : (groups[0]?.id ?? '')
-    const activeGroup =
-      groups.find((group) => group.id === activeTab) ?? groups[0]
+      this.emojiActiveTab &&
+      packs.some((pack) => pack.id === this.emojiActiveTab)
+        ? this.emojiActiveTab
+        : (packs[0]?.id ?? '')
+    const activePack = packs.find((pack) => pack.id === activeTab) ?? packs[0]
     return html`
       <div
-        id="ft-owo-panel-${key}"
-        class="ft-owo-panel absolute inset-x-0 top-full mt-2 z-20 rounded-(--furtalk-radius) p-3 grid gap-2.5 bg-(--furtalk-bg) border border-solid border-(--furtalk-border) shadow-[0_4px_20px_rgba(0,0,0,0.08)] max-h-80 overflow-y-auto"
+        id="ft-emoji-panel-${key}"
+        class="ft-emoji-panel absolute inset-x-0 top-full mt-2 z-20 rounded-(--furtalk-radius) p-3 grid gap-2.5 bg-(--furtalk-bg) border border-solid border-(--furtalk-border) shadow-[0_4px_20px_rgba(0,0,0,0.08)] max-h-80 overflow-y-auto"
         role="dialog"
         aria-modal="false"
         aria-label="选择表情"
         @keydown=${(event: KeyboardEvent) => {
           if (event.key === 'Escape') {
             event.stopPropagation()
-            this.closeOwoPanel()
+            this.closeEmojiPanel()
           }
         }}
       >
         <div
-          class="ft-owo-tabs flex gap-1.5 flex-wrap [border-bottom:1px_solid_var(--furtalk-border)] pb-2"
+          class="ft-emoji-tabs flex gap-1.5 flex-wrap [border-bottom:1px_solid_var(--furtalk-border)] pb-2"
           role="tablist"
           aria-label="表情分类"
           @keydown=${(event: KeyboardEvent) => {
             if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
             event.preventDefault()
-            const index = groups.findIndex((group) => group.id === activeTab)
+            const index = packs.findIndex((pack) => pack.id === activeTab)
             const direction = event.key === 'ArrowRight' ? 1 : -1
-            const nextIndex =
-              (index + direction + groups.length) % groups.length
-            this.owoActiveTab = groups[nextIndex]?.id ?? ''
+            const nextIndex = (index + direction + packs.length) % packs.length
+            this.emojiActiveTab = packs[nextIndex]?.id ?? ''
             this.requestUpdate()
           }}
         >
-          ${groups.map(
-            (group) => html`
+          ${packs.map(
+            (pack) => html`
               <button
                 type="button"
                 role="tab"
-                class="ft-owo-tab ${OWO_TAB_BUTTON}"
-                aria-selected=${group.id === activeTab}
+                class="ft-emoji-tab ${EMOJI_TAB_BUTTON}"
+                aria-selected=${pack.id === activeTab}
                 @click=${() => {
-                  this.owoActiveTab = group.id
+                  this.emojiActiveTab = pack.id
                   this.requestUpdate()
                 }}
               >
-                ${group.label}
+                ${pack.name}
               </button>
             `,
           )}
         </div>
-        <div class="ft-owo-status">
+        <div class="ft-emoji-status">
           ${
-            this.owoState === 'loading'
+            this.emojiState === 'loading'
               ? html`<p class="ft-note ${NOTE_TEXT}">正在加载表情…</p>`
-              : this.owoState === 'error'
+              : this.emojiState === 'error'
                 ? html`
-                    <div class="ft-owo-msg grid gap-2 py-1" role="status">
+                    <div class="ft-emoji-msg grid gap-2 py-1" role="status">
                       <p class="ft-note m-0 ${NOTE_TEXT}">表情加载失败。</p>
                       <button
                         type="button"
                         class="ft-btn ${DEFAULT_BUTTON}"
-                        @click=${() => this.retryCatalogLoad()}
+                        @click=${() => this.retryEmojiLoad()}
                       >
                         重试
                       </button>
@@ -1441,10 +1439,10 @@ export class FurtalkCommentsElement extends LitElement {
           }
         </div>
         ${
-          activeGroup && activeGroup.items.length > 0
+          activePack && activePack.items.length > 0
             ? html`
-                <div class="ft-owo-grid flex flex-wrap gap-1.5" role="list">
-                  ${activeGroup.items.map((item) => this.renderOwoItem(key, item))}
+                <div class="ft-emoji-grid flex flex-wrap gap-1.5" role="list">
+                  ${activePack.items.map((item) => this.renderEmojiItem(key, item))}
                 </div>
               `
             : html`<p class="ft-note ${NOTE_TEXT}">该分类暂无表情。</p>`
@@ -1453,37 +1451,38 @@ export class FurtalkCommentsElement extends LitElement {
     `
   }
 
-  private renderOwoItem(
+  private renderEmojiItem(
     key: 'root' | 'reply',
     item: EmojiItem,
   ): TemplateResult {
     const content =
-      item.kind === 'image' && item.imageUrl
+      item.kind === 'image'
         ? html`<img
-            class="ft-owo-image max-w-10 max-h-10 object-contain"
-            src=${item.imageUrl}
+            class="ft-emoji-image max-w-10 max-h-10 object-contain"
+            src=${item.src}
             alt=""
             loading="lazy"
             decoding="async"
             referrerpolicy="no-referrer"
           />`
-        : (item.display ?? item.insertion)
+        : item.content
     return html`
       <button
         type="button"
-        class="ft-owo-item ${OWO_ITEM_BUTTON}"
-        aria-label=${item.label}
-        title=${item.label}
-        @click=${() => this.insertOwoItem(key, item)}
+        class="ft-emoji-item ${EMOJI_ITEM_BUTTON}"
+        aria-label=${item.name}
+        title=${item.name}
+        @click=${() => this.insertEmojiItem(key, item)}
       >
         ${content}
       </button>
     `
   }
 
-  // insertOwoItem 把选中表情插入到所属 composer 的 textarea 当前选区，
-  // 替换选中文本、保留周边内容、更新对应草稿并恢复焦点与光标。
-  private insertOwoItem(key: 'root' | 'reply', item: EmojiItem): void {
+  // insertEmojiItem 把选中表情插入到所属 composer 的 textarea 当前选区：
+  // 文本项插入原样 content，图片项插入 `:<id>:`；替换选中文本、保留周边
+  // 内容、更新对应草稿并恢复焦点与光标。
+  private insertEmojiItem(key: 'root' | 'reply', item: EmojiItem): void {
     const composer = key === 'reply' ? this.reply : this.root
     if (!composer) return
     const textarea = this.renderRoot.querySelector<HTMLTextAreaElement>(
@@ -1495,7 +1494,7 @@ export class FurtalkCommentsElement extends LitElement {
     const result = insertAtSelection(composer.body, start, end, item.insertion)
     composer.body = result.next
     composer.error = ''
-    this.closeOwoPanel()
+    this.closeEmojiPanel()
     this.requestUpdate()
     void this.updateComplete.then(() => {
       textarea.focus()
@@ -1520,7 +1519,7 @@ export class FurtalkCommentsElement extends LitElement {
       >
         ${this.renderProfile()} ${this.renderComposerBody(this.root, 'root')}
         <div class="ft-actions-row ${ACTIONS_ROW}">
-          ${this.renderOwoTrigger('root')}
+          ${this.renderEmojiTrigger('root')}
           <div
             class="ft-command-group flex flex-wrap items-center gap-2 ml-auto [@media(max-width:480px)]:ml-0 [@media(max-width:480px)]:justify-end"
           >
@@ -1661,11 +1660,11 @@ export class FurtalkCommentsElement extends LitElement {
     const deleted = node.status === 'deleted'
     const pending = node.status === 'pending'
     // 已删除占位文本保持普通转义文本；Markdown 渲染输出只在这里经
-    // unsafeHTML 注入 DOM。renderMarkdown 是唯一输入源：markdown-it 已禁用
-    // 原始 HTML 并限制链接目标，后端在存储前也拒绝 raw HTML 与不安全目标。
+    // unsafeHTML 注入 DOM。renderCommentBody 是唯一输入源：markdown-it 已
+    // 禁用原始 HTML 并限制链接目标，目录图片 token 也只经该边界展开。
     const body = deleted
       ? '（该评论已被删除）'
-      : unsafeHTML(renderMarkdown(node.body))
+      : unsafeHTML(renderCommentBody(node.body, this.emojiCatalog))
     const owned = isOwnedBy(node, session ?? null)
     const busy =
       this.state.status === 'creating' || this.state.status === 'deleting'
@@ -1682,8 +1681,8 @@ export class FurtalkCommentsElement extends LitElement {
       ? 'ft-author font-semibold text-(--furtalk-text) text-[14px]'
       : 'ft-author font-semibold text-(--furtalk-text) text-[13px]'
     const bodyClass = isRoot
-      ? 'ft-body [word-break:break-word] text-[14px] leading-relaxed [&_p]:m-0 [&_p]:mb-2 [&_a]:text-(--furtalk-accent) [&_a]:underline-offset-2 [&_a]:hover:underline [&_img]:max-w-full [&_img]:h-auto [&_blockquote]:my-2 [&_blockquote]:py-1 [&_blockquote]:px-3 [&_blockquote]:[border-left:3px_solid_var(--furtalk-accent)] [&_blockquote]:bg-(--furtalk-bg-muted) [&_blockquote]:rounded-r-md [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:bg-(--furtalk-bg-muted) [&_code]:rounded-md [&_code]:text-xs [&_code]:font-mono'
-      : 'ft-body [word-break:break-word] text-[13.5px] leading-relaxed [&_p]:m-0 [&_p]:mb-1.5 [&_a]:text-(--furtalk-accent) [&_a]:underline-offset-2 [&_a]:hover:underline [&_img]:max-w-full [&_img]:h-auto [&_blockquote]:my-2 [&_blockquote]:py-1 [&_blockquote]:px-3 [&_blockquote]:[border-left:3px_solid_var(--furtalk-accent)] [&_blockquote]:bg-(--furtalk-bg-muted) [&_blockquote]:rounded-r-md [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:bg-(--furtalk-bg-muted) [&_code]:rounded-md [&_code]:text-xs [&_code]:font-mono'
+      ? 'ft-body [word-break:break-word] text-[14px] leading-relaxed [&_p]:m-0 [&_p]:mb-2 [&_a]:text-(--furtalk-accent) [&_a]:underline-offset-2 [&_a]:hover:underline [&_img]:max-w-full [&_img]:h-auto [&_.ft-emoji-image]:max-w-[64px] [&_.ft-emoji-image]:h-auto [&_.ft-emoji-image]:align-middle [&_blockquote]:my-2 [&_blockquote]:py-1 [&_blockquote]:px-3 [&_blockquote]:[border-left:3px_solid_var(--furtalk-accent)] [&_blockquote]:bg-(--furtalk-bg-muted) [&_blockquote]:rounded-r-md [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:bg-(--furtalk-bg-muted) [&_code]:rounded-md [&_code]:text-xs [&_code]:font-mono'
+      : 'ft-body [word-break:break-word] text-[13.5px] leading-relaxed [&_p]:m-0 [&_p]:mb-1.5 [&_a]:text-(--furtalk-accent) [&_a]:underline-offset-2 [&_a]:hover:underline [&_img]:max-w-full [&_img]:h-auto [&_.ft-emoji-image]:max-w-[64px] [&_.ft-emoji-image]:h-auto [&_.ft-emoji-image]:align-middle [&_blockquote]:my-2 [&_blockquote]:py-1 [&_blockquote]:px-3 [&_blockquote]:[border-left:3px_solid_var(--furtalk-accent)] [&_blockquote]:bg-(--furtalk-bg-muted) [&_blockquote]:rounded-r-md [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:bg-(--furtalk-bg-muted) [&_code]:rounded-md [&_code]:text-xs [&_code]:font-mono'
 
     return html`
       <img
@@ -1821,7 +1820,7 @@ export class FurtalkCommentsElement extends LitElement {
                 >
                   ${this.renderComposerBody(this.reply, 'reply')}
                   <div class="ft-actions-row ${ACTIONS_ROW}">
-                    ${this.renderOwoTrigger('reply')}
+                    ${this.renderEmojiTrigger('reply')}
                     <div
                       class="ft-command-group flex flex-wrap items-center gap-2 ml-auto [@media(max-width:480px)]:ml-0 [@media(max-width:480px)]:justify-end"
                     >
@@ -1886,19 +1885,19 @@ export class FurtalkCommentsElement extends LitElement {
   override updated(): void {
     this.syncCaptchas()
     this.syncMaskFocus()
-    this.syncOwoFocus()
+    this.syncEmojiFocus()
   }
 
-  // syncOwoFocus 在表情面板打开时把焦点移入面板，
+  // syncEmojiFocus 在表情面板打开时把焦点移入面板，
   // 关闭时把焦点还给触发 composer 的 textarea。
-  private syncOwoFocus(): void {
-    const key = this.owoOpenKey
-    if (key === this.lastOwoOpenKey) return
-    const previous = this.lastOwoOpenKey
-    this.lastOwoOpenKey = key
+  private syncEmojiFocus(): void {
+    const key = this.emojiOpenKey
+    if (key === this.lastEmojiOpenKey) return
+    const previous = this.lastEmojiOpenKey
+    this.lastEmojiOpenKey = key
     if (key) {
       const tab = this.renderRoot.querySelector<HTMLElement>(
-        `#ft-owo-panel-${key} .ft-owo-tab[aria-selected="true"]`,
+        `#ft-emoji-panel-${key} .ft-emoji-tab[aria-selected="true"]`,
       )
       tab?.focus()
     } else if (previous) {
