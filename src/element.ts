@@ -147,7 +147,7 @@ const ACTIONS_ROW =
 
 /** Nested comment list for flat replies under a root comment. */
 const CHILDREN_LIST =
-  'ft-children list-none m-0 mt-3 pl-3.5 [border-left:2px_solid_var(--furtalk-border)] flex flex-col gap-2 w-full [@media(max-width:480px)]:pl-2.5'
+  'ft-children list-none m-0 mt-3 pl-3.5 [border-left:2px_solid_var(--furtalk-border)] flex flex-col gap-2 [@media(max-width:480px)]:pl-2.5'
 
 /** Shared button chrome (sizing, focus ring); color/background are per kind. */
 const BASE_BUTTON =

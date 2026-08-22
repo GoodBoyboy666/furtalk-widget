@@ -196,6 +196,27 @@ describe('FurtalkCommentsElement reply-target label', () => {
   })
 })
 
+describe('FurtalkCommentsElement children list layout', () => {
+  it('renders nested replies without w-full to prevent horizontal overflow', () => {
+    const root = node({
+      id: '1',
+      children: [
+        node({
+          id: '2',
+          parent_id: '1',
+          depth: 1,
+          author_nickname: 'Child',
+        }),
+      ],
+    })
+    const host = renderNodeHost(root)
+    const childrenList = host.querySelector('ul.ft-children')
+    expect(childrenList).not.toBeNull()
+    expect(childrenList?.classList.contains('w-full')).toBe(false)
+    expect(childrenList?.classList.contains('ml-11')).toBe(true)
+  })
+})
+
 describe('FurtalkCommentsElement delete confirmation copy', () => {
   it('shows only 确认删除 and 取消 without the redundant confirm prompt text', () => {
     const host = renderNodeHost(
