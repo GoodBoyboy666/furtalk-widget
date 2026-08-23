@@ -184,6 +184,11 @@ const ACTION_BUTTON =
   GHOST_BUTTON +
   ' text-(--furtalk-text-muted) text-[12px] px-1.5 py-0.5 rounded-md enabled:hover:bg-(--furtalk-bg-muted) enabled:hover:text-(--furtalk-text)'
 
+/** Like button; pressed state reflects `liked_by_me` and stays accent-highlighted. */
+const LIKE_BUTTON =
+  GHOST_BUTTON +
+  ' inline-flex items-center gap-1 text-(--furtalk-text-muted) text-[12px] px-1.5 py-0.5 rounded-md enabled:hover:bg-(--furtalk-bg-muted) enabled:hover:text-(--furtalk-accent) aria-pressed:text-(--furtalk-accent) aria-pressed:font-semibold'
+
 /** Sort control buttons within the segmented bar; pressed state gets active tab style. */
 const SORT_BUTTON =
   'border-0 bg-transparent text-(--furtalk-text-muted) text-[12px] px-2.5 py-1 rounded-[calc(var(--furtalk-radius)-2px)] cursor-pointer [font:inherit] font-medium transition-all duration-150 hover:text-(--furtalk-text) aria-pressed:bg-(--furtalk-bg) aria-pressed:text-(--furtalk-accent) aria-pressed:font-semibold aria-pressed:shadow-2xs focus-visible:outline-2 focus-visible:outline-(--furtalk-accent) focus-visible:outline-offset-1'
@@ -479,10 +484,10 @@ export class FurtalkCommentsElement extends LitElement {
   }
 
   /**
-   * Switches the thread direction. A direction change discards the old cursor
-   * and comments (via the `sort/change` reducer action) and reloads the first
-   * page along the new direction; subsequent load-more pages reuse the same
-   * direction. This is a per-instance temporary preference and never writes
+   * Switches the thread ordering. A change discards the old cursor and
+   * comments (via the `sort/change` reducer action) and reloads the first
+   * page along the new ordering; subsequent load-more pages reuse the same
+   * ordering. This is a per-instance temporary preference and never writes
    * the admin-configured default.
    */
   private changeSort(sort: CommentSort): void {
@@ -1158,8 +1163,87 @@ export class FurtalkCommentsElement extends LitElement {
       composer.error = ''
       // 授权已完成，走到提交前一刻：若策略需要验证码且无 token，先拉起掩膜。
       await this.commentWithCaptchaGate(action, composer)
-    } else {
+    } else if (action.type === 'delete') {
       await this.deleteComment(action.commentId)
+    } else {
+      await this.performLike(action.commentId, action.like)
+    }
+  }
+
+  // ---- Like --------------------------------------------------------------
+
+  /**
+   * Entry point for a Like toggle on a published comment. Repeat clicks on a
+   * comment with an in-flight mutation are suppressed. In anonymous mode only
+   * a valid administrator session may interact (ordinary visitors see the
+   * read-only count). In authenticated mode a missing/expired session starts
+   * the existing authorization popup and resumes exactly this Like.
+   */
+  private handleLike(commentId: string, like: boolean): void {
+    if (!this.api || !this.config) return
+    if (this.state.pendingLikeIds[commentId]) return
+    if (this.mode === 'anonymous') {
+      if (!this.authenticatedSessionValid) return
+      void this.performLike(commentId, like)
+      return
+    }
+    if (!this.authenticatedSessionValid) {
+      const action: PendingAction = { type: 'like', commentId, like }
+      void this.ensureAuthenticated(action).then((ok) => {
+        if (ok) void this.performLike(commentId, like)
+      })
+      return
+    }
+    void this.performLike(commentId, like)
+  }
+
+  /**
+   * Executes one Like add/remove against the authoritative endpoint. On
+   * success the comment's count and viewer state are replaced with the
+   * response; in a Hot view the page is reloaded from page one so the visible
+   * ranking matches the new count. Authentication and request failures keep
+   * the current list and surface the recoverable error.
+   */
+  private async performLike(commentId: string, like: boolean): Promise<void> {
+    if (!this.api || !this.config) return
+    if (this.state.pendingLikeIds[commentId]) return
+    this.state = widgetReducer(this.state, {
+      type: 'like/pending',
+      commentId,
+    })
+    this.requestUpdate()
+    try {
+      const result = like
+        ? await this.api.likeComment(this.config.siteId, commentId)
+        : await this.api.unlikeComment(this.config.siteId, commentId)
+      this.state = widgetReducer(this.state, {
+        type: 'like/settled',
+        commentId,
+        result,
+      })
+      this.state = widgetReducer(this.state, { type: 'pending/clear' })
+      this.requestUpdate()
+      if (this.state.sort === 'hot') {
+        await this.loadPage()
+      }
+    } catch (error) {
+      this.state = widgetReducer(this.state, {
+        type: 'like/error',
+        commentId,
+      })
+      this.requestUpdate()
+      const widgetError = toWidgetError(error)
+      if (
+        this.mode === 'authenticated' &&
+        widgetError.code === 'unauthorized'
+      ) {
+        // The widget session expired between the probe and the write:
+        // recover via the popup authorization flow before retrying the Like.
+        this.handleSessionExpired({ type: 'like', commentId, like })
+        return
+      }
+      this.widgetNotice = { text: '点赞失败：' + this.composeMessage(error) }
+      this.requestUpdate()
     }
   }
 
@@ -1652,6 +1736,47 @@ export class FurtalkCommentsElement extends LitElement {
     return result
   }
 
+  /**
+   * Renders the Like control for a published comment. The count is always
+   * visible. An interactive button appears in authenticated mode for every
+   * reader; in anonymous mode only a valid administrator session gets the
+   * button, and ordinary visitors see a read-only count. `aria-pressed` plus
+   * an accessible label describe the state without relying on color alone.
+   */
+  private renderLikeControl(node: CommentNode, busy: boolean): TemplateResult {
+    const likePending = Boolean(this.state.pendingLikeIds[node.id])
+    const count = node.like_count ?? 0
+    const canLike =
+      this.mode === 'authenticated' ||
+      (this.mode === 'anonymous' && this.authenticatedSessionValid)
+    if (!canLike) {
+      return html`
+        <div class="ft-like mt-1 flex items-center gap-1">
+          <span class="ft-like-count text-(--furtalk-text-muted) text-[12px]">
+            赞 ${count}
+          </span>
+        </div>
+      `
+    }
+    const liked = node.liked_by_me === true
+    const label = liked ? '取消点赞' : '点赞'
+    return html`
+      <div class="ft-like mt-1 flex items-center gap-1">
+        <button
+          type="button"
+          class="${LIKE_BUTTON}"
+          aria-pressed=${liked}
+          aria-label=${label}
+          ?disabled=${busy || likePending}
+          @click=${() => this.handleLike(node.id, !liked)}
+        >
+          <span class="ft-like-label">${label}</span>
+          <span class="ft-like-count">${count}</span>
+        </button>
+      </div>
+    `
+  }
+
   private renderCommentContent(
     node: CommentNode,
     session: WidgetSession | undefined,
@@ -1751,6 +1876,7 @@ export class FurtalkCommentsElement extends LitElement {
         >
           ${body}
         </div>
+        ${!deleted ? this.renderLikeControl(node, busy) : nothing}
         ${
           canReply || owned
             ? html`
@@ -2018,6 +2144,15 @@ export class FurtalkCommentsElement extends LitElement {
               @click=${() => this.changeSort('desc')}
             >
               最新优先
+            </button>
+            <button
+              type="button"
+              class="${SORT_BUTTON}"
+              data-sort="hot"
+              aria-pressed=${this.state.sort === 'hot'}
+              @click=${() => this.changeSort('hot')}
+            >
+              最热
             </button>
           </div>
           ${this.renderSortBarLink()}

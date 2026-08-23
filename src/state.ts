@@ -27,6 +27,7 @@ import type { WidgetError } from './errors'
 import type {
   Comment,
   CommentSort,
+  LikeResult,
   RuntimeConfig,
   ThreadResponse,
   WidgetSession,
@@ -41,6 +42,7 @@ export type WidgetStatus =
   | 'authenticating'
   | 'creating'
   | 'deleting'
+  | 'liking'
 
 export type AuthPhase =
   | 'idle'
@@ -57,6 +59,7 @@ export type AuthPhase =
 export type PendingAction =
   | { type: 'create'; parentId?: string; body: string; captchaToken: string }
   | { type: 'delete'; commentId: string }
+  | { type: 'like'; commentId: string; like: boolean }
 
 export interface WidgetState {
   status: WidgetStatus
@@ -64,7 +67,7 @@ export interface WidgetState {
   thread?: ThreadResponse
   comments: Comment[]
   nextCursor: string | null
-  /** Active thread direction; a cursor is only meaningful with this direction. */
+  /** Active thread ordering; a cursor is only meaningful with this ordering. */
   sort: CommentSort
   session?: WidgetSession
   loadingMore: boolean
@@ -74,6 +77,11 @@ export interface WidgetState {
   pendingAction?: PendingAction
   /** Success notice shown after a comment submission (never on failure). */
   notice?: string
+  /**
+   * Comment ids with an in-flight Like mutation. Repeat clicks on the same
+   * comment are suppressed without blocking unrelated comment actions.
+   */
+  pendingLikeIds: Record<string, boolean>
 }
 
 export const initialState: WidgetState = {
@@ -84,6 +92,7 @@ export const initialState: WidgetState = {
   loadingMore: false,
   loadingComments: false,
   authPhase: 'idle',
+  pendingLikeIds: {},
 }
 
 export type WidgetAction =
@@ -111,6 +120,9 @@ export type WidgetAction =
   | { type: 'create/settled' }
   | { type: 'delete/pending' }
   | { type: 'delete/settled' }
+  | { type: 'like/pending'; commentId: string }
+  | { type: 'like/settled'; commentId: string; result: LikeResult }
+  | { type: 'like/error'; commentId: string }
   | { type: 'notice/set'; notice: string }
   | { type: 'notice/clear' }
   | { type: 'error'; error: WidgetError }
@@ -123,13 +135,13 @@ export function widgetReducer(
     case 'config/loading':
       return { ...state, status: 'loading-config', error: undefined }
     case 'config/loaded':
-      // The runtime config owns the default direction; older backends omit
+      // The runtime config owns the default ordering; older backends omit
       // `comment_sort` and the compatibility default is asc.
       return {
         ...state,
         status: 'loading-thread',
         config: action.config,
-        sort: action.config.comment_sort === 'desc' ? 'desc' : 'asc',
+        sort: normalizeConfigSort(action.config.comment_sort),
       }
     case 'thread/loading':
       if (state.status === 'ready') {
@@ -162,9 +174,9 @@ export function widgetReducer(
     }
     case 'sort/change': {
       if (state.sort === action.sort) return state
-      // A cursor is only valid for the direction that produced it: switching
-      // discards the old cursor and visible comments and reloads the first
-      // page along the new direction without unmounting the widget surface.
+      // A cursor is only valid for the ordering that produced it: switching
+      // discards the old cursor, visible comments, and any in-flight Like
+      // bookkeeping, then reloads the first page along the new ordering.
       return {
         ...state,
         sort: action.sort,
@@ -174,6 +186,7 @@ export function widgetReducer(
         comments: [],
         nextCursor: null,
         loadingMore: false,
+        pendingLikeIds: {},
         error: undefined,
       }
     }
@@ -229,6 +242,35 @@ export function widgetReducer(
       return { ...state, status: 'deleting', error: undefined }
     case 'delete/settled':
       return { ...state, status: 'ready', error: undefined }
+    case 'like/pending':
+      return {
+        ...state,
+        pendingLikeIds: {
+          ...state.pendingLikeIds,
+          [action.commentId]: true,
+        },
+        error: undefined,
+      }
+    case 'like/settled': {
+      const pendingLikeIds = { ...state.pendingLikeIds }
+      delete pendingLikeIds[action.commentId]
+      const result = action.result
+      const comments = state.comments.map((comment) =>
+        comment.id === result.comment_id
+          ? {
+              ...comment,
+              like_count: result.like_count,
+              liked_by_me: result.liked,
+            }
+          : comment,
+      )
+      return { ...state, pendingLikeIds, comments }
+    }
+    case 'like/error': {
+      const pendingLikeIds = { ...state.pendingLikeIds }
+      delete pendingLikeIds[action.commentId]
+      return { ...state, pendingLikeIds }
+    }
     case 'notice/set':
       return { ...state, notice: action.notice }
     case 'notice/clear':
@@ -244,4 +286,14 @@ export function widgetReducer(
     default:
       return state
   }
+}
+
+/**
+ * Normalizes a runtime-config sort value into a controlled widget sort.
+ * Pre-rollout backends omit `comment_sort` and unknown values fall back to
+ * the compatibility default `asc`.
+ */
+export function normalizeConfigSort(value?: string): CommentSort {
+  if (value === 'desc' || value === 'hot') return value
+  return 'asc'
 }

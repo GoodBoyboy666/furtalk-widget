@@ -251,4 +251,65 @@ describe('widgetReducer', () => {
     expect(state.notice).toBeUndefined()
     expect(state.status).toBe('creating')
   })
+
+  it('adopts the hot default from the runtime config', () => {
+    const hot = widgetReducer(initialState, {
+      type: 'config/loaded',
+      config: { comment_sort: 'hot' } as never,
+    })
+    expect(hot.sort).toBe('hot')
+  })
+
+  it('tracks per-comment pending Like and applies the authoritative result', () => {
+    let state = widgetReducer(initialState, {
+      type: 'thread/loaded',
+      thread: thread({
+        comments: [
+          { ...comment('1'), like_count: 1, liked_by_me: false },
+          { ...comment('2'), like_count: 0, liked_by_me: false },
+        ],
+      }),
+    })
+    state = widgetReducer(state, { type: 'like/pending', commentId: '1' })
+    expect(state.pendingLikeIds['1']).toBe(true)
+    expect(state.pendingLikeIds['2']).toBeUndefined()
+    state = widgetReducer(state, {
+      type: 'like/settled',
+      commentId: '1',
+      result: { comment_id: '1', like_count: 2, liked: true },
+    })
+    expect(state.pendingLikeIds['1']).toBeUndefined()
+    const target = state.comments.find((c) => c.id === '1')
+    expect(target?.like_count).toBe(2)
+    expect(target?.liked_by_me).toBe(true)
+    const untouched = state.comments.find((c) => c.id === '2')
+    expect(untouched?.like_count).toBe(0)
+  })
+
+  it('clears pending Like bookkeeping on a Like error without touching the list', () => {
+    let state = widgetReducer(initialState, {
+      type: 'thread/loaded',
+      thread: thread({
+        comments: [{ ...comment('1'), like_count: 1 }],
+      }),
+    })
+    state = widgetReducer(state, { type: 'like/pending', commentId: '1' })
+    state = widgetReducer(state, { type: 'like/error', commentId: '1' })
+    expect(state.pendingLikeIds['1']).toBeUndefined()
+    expect(state.comments.map((c) => c.id)).toEqual(['1'])
+  })
+
+  it('discards pending Like state when switching sort', () => {
+    let state = widgetReducer(initialState, {
+      type: 'thread/loaded',
+      thread: thread({
+        comments: [{ ...comment('1'), like_count: 1 }],
+      }),
+    })
+    state = widgetReducer(state, { type: 'like/pending', commentId: '1' })
+    state = widgetReducer(state, { type: 'sort/change', sort: 'hot' })
+    expect(state.sort).toBe('hot')
+    expect(state.pendingLikeIds).toEqual({})
+    expect(state.comments).toEqual([])
+  })
 })

@@ -16,10 +16,12 @@ export interface CaptchaProjection {
 }
 
 /**
- * Directional thread ordering used by the public comments query and the
- * widget's sort control. `asc` is the compatibility default.
+ * Thread ordering used by the public comments query and the widget's sort
+ * control. `asc` is the compatibility default; `hot` ranks by each comment's
+ * own Like count (newest/highest-id ties break deterministically) without
+ * aggregating descendant Likes.
  */
-export type CommentSort = 'asc' | 'desc'
+export type CommentSort = 'asc' | 'desc' | 'hot'
 
 /** Widget runtime configuration (GET /widget/sites/{site_id}/runtime-config). */
 export interface RuntimeConfig {
@@ -76,8 +78,27 @@ export interface Comment {
   reply_to_user_id: string | null
   /** Current nickname of the replied-to author; null when the target is gone. */
   reply_to_nickname: string | null
+  /**
+   * Public Like count for this comment. Present on post-rollout backends;
+   * consumers fall back to 0 so a staggered rollout (old backend) still
+   * renders correctly.
+   */
+  like_count?: number
+  /**
+   * Whether the current viewer has liked this comment. Anonymous readers
+   * always receive `false`; only a valid widget session reports `true`.
+   * Absent on pre-rollout backends and treated as false.
+   */
+  liked_by_me?: boolean
   created_at: string
   published_at: string | null
+}
+
+/** Authoritative result of a Like add/remove (PUT/DELETE .../like). */
+export interface LikeResult {
+  comment_id: string
+  like_count: number
+  liked: boolean
 }
 
 /** One page of a thread's flat comment list plus its cursor. */

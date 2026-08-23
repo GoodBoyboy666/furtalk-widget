@@ -339,6 +339,7 @@ function composerHost(
     sort: 'asc',
     loadingMore: false,
     authPhase: 'idle',
+    pendingLikeIds: {},
     config: {
       site_id: '1',
       name: 'Site',
@@ -526,6 +527,7 @@ describe('FurtalkCommentsElement two-layer logout', () => {
       sort: 'asc',
       loadingMore: false,
       authPhase: 'idle',
+      pendingLikeIds: {},
       config: {
         site_id: '1',
         name: 'Site',
@@ -702,6 +704,7 @@ describe('FurtalkCommentsElement unified create', () => {
       sort: 'asc',
       loadingMore: false,
       authPhase: 'idle',
+      pendingLikeIds: {},
       config: {
         site_id: '1',
         name: 'Site',
@@ -1047,6 +1050,7 @@ function readyViewHost(overrides: Partial<WidgetState> = {}): HTMLDivElement {
     sort: 'asc',
     loadingMore: false,
     authPhase: 'idle',
+    pendingLikeIds: {},
     config: {
       site_id: '1',
       name: 'Site',
@@ -1084,6 +1088,7 @@ function maskedViewHost(
     sort: 'asc',
     loadingMore: false,
     authPhase: 'idle',
+    pendingLikeIds: {},
     config: {
       site_id: '1',
       name: 'Site',
@@ -1508,6 +1513,7 @@ describe('FurtalkCommentsElement load-more retry', () => {
       sort: 'asc',
       loadingMore: false,
       authPhase: 'idle',
+      pendingLikeIds: {},
       config: {
         site_id: '1',
         name: 'Site',
@@ -1593,5 +1599,150 @@ describe('formatRelativeTime', () => {
 
   it('handles invalid timestamps gracefully', () => {
     expect(formatRelativeTime('invalid-date', baseTime)).toBe('invalid-date')
+  })
+})
+
+describe('FurtalkCommentsElement Like control', () => {
+  interface LikeHostState {
+    mode: 'anonymous' | 'authenticated'
+    session?: WidgetSession
+    pendingLikeIds?: Record<string, boolean>
+  }
+
+  function likeHost(comment: CommentNode, opts: LikeHostState): HTMLDivElement {
+    const tagName = COMPOSER_HOST_TAG
+    if (!customElements.get(tagName)) {
+      customElements.define(tagName, FurtalkCommentsElement)
+    }
+    const element = document.createElement(tagName) as unknown as {
+      state: WidgetState
+      renderNode(n: CommentNode, s?: WidgetSession): TemplateResult
+      deletingId: string | null
+    }
+    element.deletingId = null
+    element.state = {
+      status: 'ready',
+      comments: [],
+      nextCursor: null,
+      sort: 'asc',
+      loadingMore: false,
+      authPhase: 'idle',
+      pendingLikeIds: opts.pendingLikeIds ?? {},
+      config: {
+        site_id: '1',
+        name: 'Site',
+        comment_mode: opts.mode,
+        moderation: 'direct',
+        user_delete_mode: 'soft',
+        max_reply_depth: 5,
+        captcha: { comment: { required: false } },
+      },
+      session: opts.session,
+    }
+    const template = element.renderNode(comment, opts.session)
+    const host = document.createElement('div')
+    render(template, host)
+    return host
+  }
+
+  it('renders an interactive Like button in authenticated mode', () => {
+    const host = likeHost(
+      node({ id: '1', like_count: 2, liked_by_me: false }),
+      { mode: 'authenticated' },
+    )
+    const button = host.querySelector<HTMLButtonElement>('.ft-like button')
+    expect(button).not.toBeNull()
+    expect(button?.getAttribute('aria-pressed')).toBe('false')
+    expect(button?.textContent).toContain('赞')
+    expect(host.textContent).toContain('2')
+  })
+
+  it('reflects the liked state via aria-pressed and label', () => {
+    const host = likeHost(node({ id: '1', like_count: 5, liked_by_me: true }), {
+      mode: 'authenticated',
+    })
+    const button = host.querySelector<HTMLButtonElement>('.ft-like button')
+    expect(button?.getAttribute('aria-pressed')).toBe('true')
+    expect(button?.getAttribute('aria-label')).toBe('取消点赞')
+    expect(button?.textContent).toContain('5')
+  })
+
+  it('disables the button while a Like mutation is pending for that comment', () => {
+    const host = likeHost(node({ id: '1', like_count: 1 }), {
+      mode: 'authenticated',
+      pendingLikeIds: { '1': true },
+    })
+    const button = host.querySelector<HTMLButtonElement>('.ft-like button')
+    expect(button?.disabled).toBe(true)
+  })
+
+  it('renders a read-only count for an anonymous ordinary visitor', () => {
+    const host = likeHost(node({ id: '1', like_count: 3 }), {
+      mode: 'anonymous',
+    })
+    expect(host.querySelector('.ft-like button')).toBeNull()
+    const count = host.querySelector<HTMLElement>('.ft-like-count')
+    expect(count?.textContent).toContain('3')
+  })
+
+  it('renders an interactive button for a valid anonymous administrator session', () => {
+    const host = likeHost(node({ id: '1', like_count: 3 }), {
+      mode: 'anonymous',
+      session: {
+        valid: true,
+        credential_mode: 'authenticated',
+        user_id: '1',
+        site_id: '1',
+        role: 'admin',
+      },
+    })
+    expect(host.querySelector('.ft-like button')).not.toBeNull()
+  })
+
+  it('hides the Like control for deleted comments', () => {
+    const host = likeHost(node({ id: '1', status: 'deleted', like_count: 1 }), {
+      mode: 'authenticated',
+    })
+    expect(host.querySelector('.ft-like')).toBeNull()
+  })
+})
+
+describe('FurtalkCommentsElement hot sort tab', () => {
+  it('renders three peer sort tabs with hot as the active state', () => {
+    const tagName = COMPOSER_HOST_TAG
+    if (!customElements.get(tagName)) {
+      customElements.define(tagName, FurtalkCommentsElement)
+    }
+    const element = document.createElement(tagName) as unknown as {
+      state: WidgetState
+      render(): TemplateResult
+    }
+    element.state = {
+      status: 'ready',
+      comments: [],
+      nextCursor: null,
+      sort: 'hot',
+      loadingMore: false,
+      authPhase: 'idle',
+      pendingLikeIds: {},
+      config: {
+        site_id: '1',
+        name: 'Site',
+        comment_mode: 'authenticated',
+        moderation: 'direct',
+        user_delete_mode: 'soft',
+        max_reply_depth: 5,
+        captcha: { comment: { required: false } },
+      },
+    }
+    const host = document.createElement('div')
+    render(element.render(), host)
+    const tabs = [
+      ...host.querySelectorAll<HTMLButtonElement>('.ft-sort [data-sort]'),
+    ]
+    expect(tabs.map((t) => t.dataset.sort)).toEqual(['asc', 'desc', 'hot'])
+    const hot = host.querySelector<HTMLButtonElement>('[data-sort="hot"]')
+    expect(hot?.getAttribute('aria-pressed')).toBe('true')
+    expect(hot?.textContent).toContain('最热')
   })
 })

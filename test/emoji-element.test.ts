@@ -107,6 +107,7 @@ function readyElement(overrides: Partial<RuntimeConfig> = {}): EmojiTestElement 
     sort: 'asc',
     loadingMore: false,
     authPhase: 'idle',
+    pendingLikeIds: {},
     config: runtimeConfig(overrides),
   }
   return element

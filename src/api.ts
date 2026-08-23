@@ -13,6 +13,7 @@ import type {
   CommentDeleteResult,
   CommentSort,
   CreateCommentInput,
+  LikeResult,
   RuntimeConfig,
   ThreadResponse,
   WidgetSession,
@@ -151,6 +152,25 @@ export class ApiClient {
     return this.request<CommentDeleteResult>(
       'DELETE',
       `/api/v1/widget/comments/${commentId}`,
+    )
+  }
+
+  /**
+   * Adds a Like to a published comment. The widget cookie supplies the
+   * credential; both add and remove are idempotent on the server.
+   */
+  likeComment(siteId: string, commentId: string): Promise<LikeResult> {
+    return this.request<LikeResult>(
+      'PUT',
+      `/api/v1/widget/sites/${siteId}/comments/${commentId}/like`,
+    )
+  }
+
+  /** Removes the current viewer's Like from a published comment (idempotent). */
+  unlikeComment(siteId: string, commentId: string): Promise<LikeResult> {
+    return this.request<LikeResult>(
+      'DELETE',
+      `/api/v1/widget/sites/${siteId}/comments/${commentId}/like`,
     )
   }
 }

@@ -13,15 +13,27 @@ export interface CommentNode extends Comment {
 }
 
 /**
- * Stable (created_at, id) comparison. `created_at` parses as a real timestamp
- * so offsets normalize; ids are decimal strings compared by length then
- * lexicographically.
+ * Stable ordering comparison used by the nested reply tree.
+ *
+ * Directional modes sort by `(created_at, id)` ascending or descending. Hot
+ * sorts by the comment's own Like count descending, with `(created_at, id)`
+ * descending as the deterministic tie-breaker — matching the server keyset.
+ * Descendant Likes are never aggregated into an ancestor.
  */
 export function compareComments(
   a: Comment,
   b: Comment,
   sort: CommentSort = 'asc',
 ): number {
+  if (sort === 'hot') {
+    const aCount = a.like_count ?? 0
+    const bCount = b.like_count ?? 0
+    if (aCount !== bCount) return aCount < bCount ? 1 : -1
+    const aTime = Date.parse(a.created_at)
+    const bTime = Date.parse(b.created_at)
+    if (aTime !== bTime) return aTime < bTime ? 1 : -1
+    return compareDecimalId(b.id, a.id)
+  }
   const aTime = Date.parse(a.created_at)
   const bTime = Date.parse(b.created_at)
   const direction = sort === 'desc' ? -1 : 1

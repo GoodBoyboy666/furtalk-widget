@@ -298,4 +298,48 @@ describe('ApiClient', () => {
   it('verifies api methods are used in tests (eslint unused vars sanity)', () => {
     expect(vi.isMockFunction(vi.fn())).toBe(true)
   })
+
+  it('adds a like with PUT and removes it with DELETE on the site-scoped path', async () => {
+    const results = [
+      jsonResponse(200, { comment_id: '42', like_count: 3, liked: true }),
+      jsonResponse(200, { comment_id: '42', like_count: 2, liked: false }),
+    ]
+    let n = 0
+    const fetchImpl = mockFetch(() => Promise.resolve(results[n++]!))
+    const client = new ApiClient({
+      origin: 'https://comments.example',
+      fetchImpl,
+    })
+
+    const added = await client.likeComment('7', '42')
+    expect(added).toEqual({ comment_id: '42', like_count: 3, liked: true })
+    expect(calls[0]?.init?.method).toBe('PUT')
+    expect(calls[0]?.input).toBe(
+      'https://comments.example/api/v1/widget/sites/7/comments/42/like',
+    )
+
+    const removed = await client.unlikeComment('7', '42')
+    expect(removed).toEqual({ comment_id: '42', like_count: 2, liked: false })
+    expect(calls[1]?.init?.method).toBe('DELETE')
+    expect(calls[1]?.input).toBe(
+      'https://comments.example/api/v1/widget/sites/7/comments/42/like',
+    )
+  })
+
+  it('propagates a Like mutation failure as a WidgetError', async () => {
+    const fetchImpl = mockFetch(() =>
+      Promise.resolve(
+        jsonResponse(404, {
+          error: { code: 'not_found', message: '资源不存在' },
+        }),
+      ),
+    )
+    const client = new ApiClient({
+      origin: 'https://comments.example',
+      fetchImpl,
+    })
+    await expect(client.likeComment('7', '999')).rejects.toMatchObject({
+      code: 'not_found',
+    })
+  })
 })

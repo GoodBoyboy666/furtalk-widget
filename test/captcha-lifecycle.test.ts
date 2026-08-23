@@ -74,6 +74,7 @@ function captchaInstance(
     sort: 'asc',
     loadingMore: false,
     authPhase: 'idle',
+    pendingLikeIds: {},
     config: {
       site_id: '1',
       name: 'Site',

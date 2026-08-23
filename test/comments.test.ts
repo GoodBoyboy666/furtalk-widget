@@ -214,6 +214,77 @@ describe('compareComments', () => {
   })
 })
 
+describe('hot ordering', () => {
+  it('ranks by the comment own like count descending', () => {
+    const low = comment({ id: '1', like_count: 1 })
+    const high = comment({ id: '2', like_count: 5 })
+    expect(compareComments(low, high, 'hot')).toBeGreaterThan(0)
+    expect(compareComments(high, low, 'hot')).toBeLessThan(0)
+  })
+
+  it('breaks hot ties by (created_at, id) descending', () => {
+    const older = comment({
+      id: '1',
+      like_count: 2,
+      created_at: '2026-08-10T00:00:00Z',
+    })
+    const newer = comment({
+      id: '2',
+      like_count: 2,
+      created_at: '2026-08-11T00:00:00Z',
+    })
+    expect(compareComments(older, newer, 'hot')).toBeGreaterThan(0)
+    // Same count and timestamp: higher id first.
+    const a = comment({
+      id: '2',
+      like_count: 2,
+      created_at: '2026-08-11T00:00:00Z',
+    })
+    const b = comment({
+      id: '10',
+      like_count: 2,
+      created_at: '2026-08-11T00:00:00Z',
+    })
+    expect(compareComments(a, b, 'hot')).toBeGreaterThan(0)
+    expect(compareComments(b, a, 'hot')).toBeLessThan(0)
+  })
+
+  it('treats a missing like_count as zero and never aggregates descendants', () => {
+    const missing = comment({ id: '1' })
+    const zero = comment({ id: '2', like_count: 0 })
+    const one = comment({ id: '3', like_count: 1 })
+    // A missing count ties with an explicit zero; the (created_at, id) tie-break
+    // then ranks the higher id first.
+    expect(compareComments(missing, zero, 'hot')).toBeGreaterThan(0)
+    expect(compareComments(one, missing, 'hot')).toBeLessThan(0)
+  })
+
+  it('sorts every sibling level by own like count, preserving parents before replies', () => {
+    const comments = [
+      comment({ id: 'root', parent_id: null, depth: 0, like_count: 0 }),
+      comment({ id: 'r2', parent_id: null, depth: 0, like_count: 3 }),
+      comment({
+        id: 'c1',
+        parent_id: 'root',
+        depth: 1,
+        like_count: 5,
+        created_at: '2026-08-11T09:01:00Z',
+      }),
+      comment({
+        id: 'c2',
+        parent_id: 'root',
+        depth: 1,
+        like_count: 1,
+        created_at: '2026-08-11T09:02:00Z',
+      }),
+    ]
+    const tree = buildCommentTree(comments, 'hot')
+    // Roots ranked by like_count desc: r2 (3) before root (0).
+    expect(tree.map((n) => n.id)).toEqual(['r2', 'root'])
+    expect(tree[1]?.children.map((n) => n.id)).toEqual(['c1', 'c2'])
+  })
+})
+
 describe('submissionNotice', () => {
   it('asks for moderation when the created comment is pending', () => {
     expect(submissionNotice('pending')).toBe('评论已提交，等待审核。')
