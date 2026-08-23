@@ -1650,7 +1650,7 @@ describe('FurtalkCommentsElement Like control', () => {
       node({ id: '1', like_count: 2, liked_by_me: false }),
       { mode: 'authenticated' },
     )
-    const button = host.querySelector<HTMLButtonElement>('.ft-like button')
+    const button = host.querySelector<HTMLButtonElement>('.ft-like')
     expect(button).not.toBeNull()
     expect(button?.getAttribute('aria-pressed')).toBe('false')
     expect(button?.textContent).toContain('赞')
@@ -1661,7 +1661,7 @@ describe('FurtalkCommentsElement Like control', () => {
     const host = likeHost(node({ id: '1', like_count: 5, liked_by_me: true }), {
       mode: 'authenticated',
     })
-    const button = host.querySelector<HTMLButtonElement>('.ft-like button')
+    const button = host.querySelector<HTMLButtonElement>('.ft-like')
     expect(button?.getAttribute('aria-pressed')).toBe('true')
     expect(button?.getAttribute('aria-label')).toBe('取消点赞')
     expect(button?.textContent).toContain('5')
@@ -1672,7 +1672,7 @@ describe('FurtalkCommentsElement Like control', () => {
       mode: 'authenticated',
       pendingLikeIds: { '1': true },
     })
-    const button = host.querySelector<HTMLButtonElement>('.ft-like button')
+    const button = host.querySelector<HTMLButtonElement>('.ft-like')
     expect(button?.disabled).toBe(true)
   })
 
@@ -1696,7 +1696,7 @@ describe('FurtalkCommentsElement Like control', () => {
         role: 'admin',
       },
     })
-    expect(host.querySelector('.ft-like button')).not.toBeNull()
+    expect(host.querySelector<HTMLButtonElement>('.ft-like')).not.toBeNull()
   })
 
   it('hides the Like control for deleted comments', () => {

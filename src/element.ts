@@ -184,11 +184,6 @@ const ACTION_BUTTON =
   GHOST_BUTTON +
   ' text-(--furtalk-text-muted) text-[12px] px-1.5 py-0.5 rounded-md enabled:hover:bg-(--furtalk-bg-muted) enabled:hover:text-(--furtalk-text)'
 
-/** Like button; pressed state reflects `liked_by_me` and stays accent-highlighted. */
-const LIKE_BUTTON =
-  GHOST_BUTTON +
-  ' inline-flex items-center gap-1 text-(--furtalk-text-muted) text-[12px] px-1.5 py-0.5 rounded-md enabled:hover:bg-(--furtalk-bg-muted) enabled:hover:text-(--furtalk-accent) aria-pressed:text-(--furtalk-accent) aria-pressed:font-semibold'
-
 /** Sort control buttons within the segmented bar; pressed state gets active tab style. */
 const SORT_BUTTON =
   'border-0 bg-transparent text-(--furtalk-text-muted) text-[12px] px-2.5 py-1 rounded-[calc(var(--furtalk-radius)-2px)] cursor-pointer [font:inherit] font-medium transition-all duration-150 hover:text-(--furtalk-text) aria-pressed:bg-(--furtalk-bg) aria-pressed:text-(--furtalk-accent) aria-pressed:font-semibold aria-pressed:shadow-2xs focus-visible:outline-2 focus-visible:outline-(--furtalk-accent) focus-visible:outline-offset-1'
@@ -1751,29 +1746,27 @@ export class FurtalkCommentsElement extends LitElement {
       (this.mode === 'anonymous' && this.authenticatedSessionValid)
     if (!canLike) {
       return html`
-        <div class="ft-like mt-1 flex items-center gap-1">
-          <span class="ft-like-count text-(--furtalk-text-muted) text-[12px]">
-            赞 ${count}
-          </span>
-        </div>
+        <span
+          class="ft-like ft-like-count text-(--furtalk-text-muted) text-[12px] px-1.5"
+        >
+          赞 ${count}
+        </span>
       `
     }
     const liked = node.liked_by_me === true
     const label = liked ? '取消点赞' : '点赞'
     return html`
-      <div class="ft-like mt-1 flex items-center gap-1">
-        <button
-          type="button"
-          class="${LIKE_BUTTON}"
-          aria-pressed=${liked}
-          aria-label=${label}
-          ?disabled=${busy || likePending}
-          @click=${() => this.handleLike(node.id, !liked)}
-        >
-          <span class="ft-like-label">${label}</span>
-          <span class="ft-like-count">${count}</span>
-        </button>
-      </div>
+      <button
+        type="button"
+        class="ft-like ${ACTION_BUTTON}"
+        aria-pressed=${liked}
+        aria-label=${label}
+        ?disabled=${busy || likePending}
+        @click=${() => this.handleLike(node.id, !liked)}
+      >
+        <span class="ft-like-label">${label}</span>
+        <span class="ft-like-count">${count}</span>
+      </button>
     `
   }
 
@@ -1876,9 +1869,8 @@ export class FurtalkCommentsElement extends LitElement {
         >
           ${body}
         </div>
-        ${!deleted ? this.renderLikeControl(node, busy) : nothing}
         ${
-          canReply || owned
+          !deleted || owned
             ? html`
                 <div
                   class="ft-actions mt-1 -ml-1.5 flex items-center gap-1 text-[13px]"
@@ -1897,6 +1889,7 @@ export class FurtalkCommentsElement extends LitElement {
                         `
                       : nothing
                   }
+                  ${!deleted ? this.renderLikeControl(node, busy) : nothing}
                   ${
                     owned && !deleted
                       ? html`
