@@ -544,6 +544,10 @@ export class FurtalkCommentsElement extends LitElement {
     )
   }
 
+  private get adminWidgetSessionValid(): boolean {
+    return this.sessionValid && this.state.session?.role === 'admin'
+  }
+
   private get normalizedHints(): ProfileHints {
     return validateProfileHints(this.hints)
   }
@@ -1242,6 +1246,52 @@ export class FurtalkCommentsElement extends LitElement {
     }
   }
 
+  // ---- Pin ---------------------------------------------------------------
+
+  /** Executes a root-comment pin toggle for an already-authorized administrator. */
+  private handlePin(commentId: string, pinned: boolean): void {
+    if (!this.api || !this.config || !this.adminWidgetSessionValid) return
+    if (this.state.pendingPinIds?.[commentId]) return
+    void this.performPin(commentId, pinned)
+  }
+
+  /** Updates the authoritative pin state and reloads the first page afterward. */
+  private async performPin(commentId: string, pinned: boolean): Promise<void> {
+    if (!this.api || !this.config || !this.adminWidgetSessionValid) return
+    if (this.state.pendingPinIds?.[commentId]) return
+    this.state = widgetReducer(this.state, {
+      type: 'pin/pending',
+      commentId,
+    })
+    this.requestUpdate()
+    try {
+      const result = pinned
+        ? await this.api.pinComment(this.config.siteId, commentId)
+        : await this.api.unpinComment(this.config.siteId, commentId)
+      this.state = widgetReducer(this.state, {
+        type: 'pin/settled',
+        commentId,
+        result,
+      })
+      this.widgetNotice = {
+        text: result.is_pinned ? '评论已置顶。' : '评论已取消置顶。',
+      }
+      this.requestUpdate()
+      await this.loadPage()
+    } catch (error) {
+      this.state = widgetReducer(this.state, {
+        type: 'pin/error',
+        commentId,
+      })
+      this.widgetNotice = {
+        text:
+          (pinned ? '置顶失败：' : '取消置顶失败：') +
+          this.composeMessage(error),
+      }
+      this.requestUpdate()
+    }
+  }
+
   // ---- Rendering -------------------------------------------------------------
 
   private renderError(error: WidgetError): TemplateResult {
@@ -1770,6 +1820,34 @@ export class FurtalkCommentsElement extends LitElement {
     `
   }
 
+  /** Renders the administrator-only pin control for a root comment. */
+  private renderPinControl(
+    node: CommentNode,
+    busy: boolean,
+    isRoot: boolean,
+  ): TemplateResult | typeof nothing {
+    const pinned = node.is_pinned === true
+    if (
+      !isRoot ||
+      !this.adminWidgetSessionValid ||
+      (!pinned && node.status !== 'published')
+    ) {
+      return nothing
+    }
+    const pending = Boolean(this.state.pendingPinIds?.[node.id])
+    return html`
+      <button
+        type="button"
+        class="${ACTION_BUTTON} ${pinned ? 'text-(--furtalk-accent)' : ''}"
+        ?disabled=${busy || pending}
+        aria-label=${pinned ? '取消置顶' : '置顶'}
+        @click=${() => this.handlePin(node.id, !pinned)}
+      >
+        ${pending ? '处理中…' : pinned ? '取消置顶' : '置顶'}
+      </button>
+    `
+  }
+
   private renderCommentContent(
     node: CommentNode,
     session: WidgetSession | undefined,
@@ -1837,6 +1915,15 @@ export class FurtalkCommentsElement extends LitElement {
               : nothing
           }
           ${
+            isRoot && node.is_pinned === true
+              ? html`<span
+                  class="ft-pinned inline-flex items-center gap-0.5 text-[11px] font-medium text-amber-700 bg-amber-100 dark:text-amber-300 dark:bg-amber-900/40 rounded-full px-2 py-0.5"
+                  aria-label="已置顶"
+                  >📌 已置顶</span
+                >`
+              : nothing
+          }
+          ${
             pending
               ? html`<span
                   class="ft-pending inline-block text-[11px] font-medium text-amber-700 bg-amber-100 dark:text-amber-300 dark:bg-amber-900/40 rounded-full px-2 py-0.5"
@@ -1890,6 +1977,7 @@ export class FurtalkCommentsElement extends LitElement {
                       : nothing
                   }
                   ${!deleted ? this.renderLikeControl(node, busy) : nothing}
+                  ${this.renderPinControl(node, busy, isRoot)}
                   ${
                     owned && !deleted
                       ? html`

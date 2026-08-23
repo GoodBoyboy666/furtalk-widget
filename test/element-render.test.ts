@@ -1607,6 +1607,7 @@ describe('FurtalkCommentsElement Like control', () => {
     mode: 'anonymous' | 'authenticated'
     session?: WidgetSession
     pendingLikeIds?: Record<string, boolean>
+    pendingPinIds?: Record<string, boolean>
   }
 
   function likeHost(comment: CommentNode, opts: LikeHostState): HTMLDivElement {
@@ -1628,6 +1629,7 @@ describe('FurtalkCommentsElement Like control', () => {
       loadingMore: false,
       authPhase: 'idle',
       pendingLikeIds: opts.pendingLikeIds ?? {},
+      pendingPinIds: opts.pendingPinIds ?? {},
       config: {
         site_id: '1',
         name: 'Site',
@@ -1655,6 +1657,23 @@ describe('FurtalkCommentsElement Like control', () => {
     expect(button?.getAttribute('aria-pressed')).toBe('false')
     expect(button?.textContent).toContain('赞')
     expect(host.textContent).toContain('2')
+  })
+
+  it('renders the pin shortcut only for an existing administrator session', () => {
+    const adminHost = likeHost(node({ id: '1' }), {
+      mode: 'anonymous',
+      session: {
+        valid: true,
+        credential_mode: 'authenticated',
+        user_id: '10',
+        site_id: '1',
+        role: 'admin',
+      },
+    })
+    expect(adminHost.textContent).toContain('置顶')
+
+    const visitorHost = likeHost(node({ id: '1' }), { mode: 'anonymous' })
+    expect(visitorHost.textContent).not.toContain('置顶')
   })
 
   it('reflects the liked state via aria-pressed and label', () => {

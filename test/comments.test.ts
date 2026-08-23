@@ -107,6 +107,35 @@ describe('buildCommentTree direction', () => {
     expect(tree.map((n) => n.id)).toEqual(['30', '20', '10'])
   })
 
+  it('places pinned roots before unpinned roots in every direction', () => {
+    const comments = [
+      comment({
+        id: 'old-pinned',
+        is_pinned: true,
+        created_at: '2026-08-01T00:00:00Z',
+      }),
+      comment({
+        id: 'new-unpinned',
+        created_at: '2026-08-11T00:00:00Z',
+      }),
+      comment({
+        id: 'new-pinned',
+        is_pinned: true,
+        created_at: '2026-08-10T00:00:00Z',
+      }),
+    ]
+    expect(buildCommentTree(comments, 'asc').map((n) => n.id)).toEqual([
+      'old-pinned',
+      'new-pinned',
+      'new-unpinned',
+    ])
+    expect(buildCommentTree(comments, 'desc').map((n) => n.id)).toEqual([
+      'new-pinned',
+      'old-pinned',
+      'new-unpinned',
+    ])
+  })
+
   it('keeps parents before replies for both directions', () => {
     const comments = [
       comment({

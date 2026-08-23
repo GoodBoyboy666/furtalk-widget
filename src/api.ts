@@ -14,6 +14,7 @@ import type {
   CommentSort,
   CreateCommentInput,
   LikeResult,
+  PinResult,
   RuntimeConfig,
   ThreadResponse,
   WidgetSession,
@@ -171,6 +172,22 @@ export class ApiClient {
     return this.request<LikeResult>(
       'DELETE',
       `/api/v1/widget/sites/${siteId}/comments/${commentId}/like`,
+    )
+  }
+
+  /** Pins a published root comment for an administrator Widget session. */
+  pinComment(siteId: string, commentId: string): Promise<PinResult> {
+    return this.request<PinResult>(
+      'PUT',
+      `/api/v1/widget/sites/${siteId}/comments/${commentId}/pin`,
+    )
+  }
+
+  /** Removes a root comment from the pinned group for an administrator Widget session. */
+  unpinComment(siteId: string, commentId: string): Promise<PinResult> {
+    return this.request<PinResult>(
+      'DELETE',
+      `/api/v1/widget/sites/${siteId}/comments/${commentId}/pin`,
     )
   }
 }

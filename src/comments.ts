@@ -15,7 +15,8 @@ export interface CommentNode extends Comment {
 /**
  * Stable ordering comparison used by the nested reply tree.
  *
- * Directional modes sort by `(created_at, id)` ascending or descending. Hot
+ * Root comments are grouped by `is_pinned` first. Directional modes then sort
+ * by `(created_at, id)` ascending or descending. Hot
  * sorts by the comment's own Like count descending, with `(created_at, id)`
  * descending as the deterministic tie-breaker — matching the server keyset.
  * Descendant Likes are never aggregated into an ancestor.
@@ -25,6 +26,9 @@ export function compareComments(
   b: Comment,
   sort: CommentSort = 'asc',
 ): number {
+  const aPinned = a.is_pinned === true ? 1 : 0
+  const bPinned = b.is_pinned === true ? 1 : 0
+  if (aPinned !== bPinned) return aPinned < bPinned ? 1 : -1
   if (sort === 'hot') {
     const aCount = a.like_count ?? 0
     const bCount = b.like_count ?? 0

@@ -28,6 +28,7 @@ import type {
   Comment,
   CommentSort,
   LikeResult,
+  PinResult,
   RuntimeConfig,
   ThreadResponse,
   WidgetSession,
@@ -82,6 +83,8 @@ export interface WidgetState {
    * comment are suppressed without blocking unrelated comment actions.
    */
   pendingLikeIds: Record<string, boolean>
+  /** Comment ids with an in-flight pin/unpin mutation. */
+  pendingPinIds?: Record<string, boolean>
 }
 
 export const initialState: WidgetState = {
@@ -93,6 +96,7 @@ export const initialState: WidgetState = {
   loadingComments: false,
   authPhase: 'idle',
   pendingLikeIds: {},
+  pendingPinIds: {},
 }
 
 export type WidgetAction =
@@ -123,6 +127,9 @@ export type WidgetAction =
   | { type: 'like/pending'; commentId: string }
   | { type: 'like/settled'; commentId: string; result: LikeResult }
   | { type: 'like/error'; commentId: string }
+  | { type: 'pin/pending'; commentId: string }
+  | { type: 'pin/settled'; commentId: string; result: PinResult }
+  | { type: 'pin/error'; commentId: string }
   | { type: 'notice/set'; notice: string }
   | { type: 'notice/clear' }
   | { type: 'error'; error: WidgetError }
@@ -187,6 +194,7 @@ export function widgetReducer(
         nextCursor: null,
         loadingMore: false,
         pendingLikeIds: {},
+        pendingPinIds: {},
         error: undefined,
       }
     }
@@ -270,6 +278,34 @@ export function widgetReducer(
       const pendingLikeIds = { ...state.pendingLikeIds }
       delete pendingLikeIds[action.commentId]
       return { ...state, pendingLikeIds }
+    }
+    case 'pin/pending':
+      return {
+        ...state,
+        pendingPinIds: {
+          ...(state.pendingPinIds ?? {}),
+          [action.commentId]: true,
+        },
+      }
+    case 'pin/settled': {
+      const pendingPinIds = { ...(state.pendingPinIds ?? {}) }
+      delete pendingPinIds[action.commentId]
+      const comments = state.comments.map((comment) =>
+        comment.id === action.commentId
+          ? { ...comment, is_pinned: action.result.is_pinned }
+          : comment,
+      )
+      return {
+        ...state,
+        pendingPinIds,
+        comments,
+        thread: state.thread ? { ...state.thread, comments } : state.thread,
+      }
+    }
+    case 'pin/error': {
+      const pendingPinIds = { ...(state.pendingPinIds ?? {}) }
+      delete pendingPinIds[action.commentId]
+      return { ...state, pendingPinIds }
     }
     case 'notice/set':
       return { ...state, notice: action.notice }

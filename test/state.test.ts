@@ -299,6 +299,22 @@ describe('widgetReducer', () => {
     expect(state.comments.map((c) => c.id)).toEqual(['1'])
   })
 
+  it('tracks a pin mutation and applies its authoritative state', () => {
+    let state = widgetReducer(initialState, {
+      type: 'thread/loaded',
+      thread: thread({ comments: [{ ...comment('1'), is_pinned: false }] }),
+    })
+    state = widgetReducer(state, { type: 'pin/pending', commentId: '1' })
+    expect(state.pendingPinIds?.['1']).toBe(true)
+    state = widgetReducer(state, {
+      type: 'pin/settled',
+      commentId: '1',
+      result: { comment_id: '1', is_pinned: true },
+    })
+    expect(state.pendingPinIds?.['1']).toBeUndefined()
+    expect(state.comments[0]?.is_pinned).toBe(true)
+  })
+
   it('discards pending Like state when switching sort', () => {
     let state = widgetReducer(initialState, {
       type: 'thread/loaded',

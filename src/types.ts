@@ -69,6 +69,8 @@ export interface Comment {
   depth: number
   body: string
   status: 'pending' | 'published' | 'spam' | 'deleted'
+  /** Whether this root comment is pinned above the unpinned group. */
+  is_pinned?: boolean
   author_nickname: string
   author_website: string | null
   /** Controlled public author role; missing while a pre-rollout backend serves this comment. */
@@ -92,6 +94,12 @@ export interface Comment {
   liked_by_me?: boolean
   created_at: string
   published_at: string | null
+}
+
+/** Authoritative result of a pin/unpin mutation. */
+export interface PinResult {
+  comment_id: string
+  is_pinned: boolean
 }
 
 /** Authoritative result of a Like add/remove (PUT/DELETE .../like). */

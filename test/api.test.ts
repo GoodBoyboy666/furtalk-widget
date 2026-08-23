@@ -342,4 +342,34 @@ describe('ApiClient', () => {
       code: 'not_found',
     })
   })
+
+  it('pins and unpins through the site-scoped Widget endpoints', async () => {
+    const results = [
+      jsonResponse(200, { comment_id: '42', is_pinned: true }),
+      jsonResponse(200, { comment_id: '42', is_pinned: false }),
+    ]
+    let n = 0
+    const fetchImpl = mockFetch(() => Promise.resolve(results[n++]!))
+    const client = new ApiClient({
+      origin: 'https://comments.example',
+      fetchImpl,
+    })
+
+    await expect(client.pinComment('7', '42')).resolves.toEqual({
+      comment_id: '42',
+      is_pinned: true,
+    })
+    expect(calls[0]?.init?.method).toBe('PUT')
+    expect(calls[0]?.input).toBe(
+      'https://comments.example/api/v1/widget/sites/7/comments/42/pin',
+    )
+    await expect(client.unpinComment('7', '42')).resolves.toEqual({
+      comment_id: '42',
+      is_pinned: false,
+    })
+    expect(calls[1]?.init?.method).toBe('DELETE')
+    expect(calls[1]?.input).toBe(
+      'https://comments.example/api/v1/widget/sites/7/comments/42/pin',
+    )
+  })
 })
