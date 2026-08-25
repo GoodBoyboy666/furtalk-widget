@@ -195,7 +195,7 @@ const EMOJI_TAB_BUTTON =
 
 /** Emoji item buttons. */
 const EMOJI_ITEM_BUTTON =
-  'inline-flex items-center justify-start min-h-8 max-w-full px-2 py-1 border-0 bg-transparent text-[14px] leading-none whitespace-nowrap cursor-pointer [font:inherit] rounded-md transition-colors hover:bg-(--furtalk-bg)'
+  'inline-flex items-center justify-start min-h-8 max-w-full px-2 py-1 border-0 bg-transparent text-(--furtalk-text) text-[14px] leading-none whitespace-nowrap cursor-pointer [font:inherit] rounded-md transition-colors hover:bg-(--furtalk-bg)'
 
 /** Emoji picker trigger button. */
 const EMOJI_TRIGGER_BUTTON =
@@ -1505,7 +1505,7 @@ export class FurtalkCommentsElement extends LitElement {
     return html`
       <div
         id="ft-emoji-panel-${key}"
-        class="ft-emoji-panel absolute inset-x-0 top-full mt-2 z-20 rounded-(--furtalk-radius) p-3 grid gap-2.5 bg-(--furtalk-bg) border border-solid border-(--furtalk-border) shadow-[0_4px_20px_rgba(0,0,0,0.08)] max-h-80 overflow-y-auto"
+        class="ft-emoji-panel absolute inset-x-0 top-full mt-2 z-20 rounded-(--furtalk-radius) p-3 flex flex-col gap-2.5 bg-(--furtalk-bg) border border-solid border-(--furtalk-border) shadow-[0_4px_20px_rgba(0,0,0,0.08)] max-h-80"
         role="dialog"
         aria-modal="false"
         aria-label="选择表情"
@@ -1547,35 +1547,37 @@ export class FurtalkCommentsElement extends LitElement {
             `,
           )}
         </div>
-        <div class="ft-emoji-status">
+        <div class="ft-emoji-scroll min-h-0 overflow-y-auto grid gap-2.5">
+          <div class="ft-emoji-status">
+            ${
+              this.emojiState === 'loading'
+                ? html`<p class="ft-note ${NOTE_TEXT}">正在加载表情…</p>`
+                : this.emojiState === 'error'
+                  ? html`
+                      <div class="ft-emoji-msg grid gap-2 py-1" role="status">
+                        <p class="ft-note m-0 ${NOTE_TEXT}">表情加载失败。</p>
+                        <button
+                          type="button"
+                          class="ft-btn ${DEFAULT_BUTTON}"
+                          @click=${() => this.retryEmojiLoad()}
+                        >
+                          重试
+                        </button>
+                      </div>
+                    `
+                  : nothing
+            }
+          </div>
           ${
-            this.emojiState === 'loading'
-              ? html`<p class="ft-note ${NOTE_TEXT}">正在加载表情…</p>`
-              : this.emojiState === 'error'
-                ? html`
-                    <div class="ft-emoji-msg grid gap-2 py-1" role="status">
-                      <p class="ft-note m-0 ${NOTE_TEXT}">表情加载失败。</p>
-                      <button
-                        type="button"
-                        class="ft-btn ${DEFAULT_BUTTON}"
-                        @click=${() => this.retryEmojiLoad()}
-                      >
-                        重试
-                      </button>
-                    </div>
-                  `
-                : nothing
+            activePack && activePack.items.length > 0
+              ? html`
+                  <div class="ft-emoji-grid flex flex-wrap gap-1.5" role="list">
+                    ${activePack.items.map((item) => this.renderEmojiItem(key, item))}
+                  </div>
+                `
+              : html`<p class="ft-note ${NOTE_TEXT}">该分类暂无表情。</p>`
           }
         </div>
-        ${
-          activePack && activePack.items.length > 0
-            ? html`
-                <div class="ft-emoji-grid flex flex-wrap gap-1.5" role="list">
-                  ${activePack.items.map((item) => this.renderEmojiItem(key, item))}
-                </div>
-              `
-            : html`<p class="ft-note ${NOTE_TEXT}">该分类暂无表情。</p>`
-        }
       </div>
     `
   }

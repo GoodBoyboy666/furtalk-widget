@@ -175,6 +175,29 @@ describe('FurtalkCommentsElement emoji picker', () => {
     expect(img?.getAttribute('referrerpolicy')).toBe('no-referrer')
   })
 
+  it('binds text emoji to the themed token and keeps tabs outside the scroll region', () => {
+    const element = readyElement({ emoji_catalog_url: CATALOG_URL })
+    element.emojiCatalog = sampleCatalog
+    element.emojiActiveTab = 'face'
+    ;(element as unknown as { emojiOpenKey: 'root' | null }).emojiOpenKey = 'root'
+    const host = document.createElement('div')
+    render(element.renderComposerBody(emptyComposer(), 'root'), host)
+    const panel = host.querySelector<HTMLElement>('.ft-emoji-panel')
+    expect(panel?.getAttribute('class')).toContain('max-h-80')
+    expect(panel?.getAttribute('class')).not.toContain('overflow-y-auto')
+    const tabs = host.querySelector<HTMLElement>('.ft-emoji-tabs')
+    expect(tabs?.getAttribute('class')).not.toContain('overflow-y-auto')
+    const scroll = host.querySelector<HTMLElement>('.ft-emoji-scroll')
+    expect(scroll).not.toBeNull()
+    expect(scroll?.getAttribute('class')).toContain('min-h-0')
+    expect(scroll?.getAttribute('class')).toContain('overflow-y-auto')
+    const items = host.querySelectorAll<HTMLButtonElement>('.ft-emoji-item')
+    expect(items.length).toBeGreaterThan(0)
+    for (const item of items) {
+      expect(item.getAttribute('class')).toContain('text-(--furtalk-text)')
+    }
+  })
+
   it('closes the panel on Escape via the dialog keydown handler', () => {
     const element = readyElement({ emoji_catalog_url: CATALOG_URL })
     ;(element as unknown as { emojiOpenKey: 'root' | null }).emojiOpenKey = 'root'
