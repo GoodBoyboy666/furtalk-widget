@@ -136,7 +136,7 @@ describe('buildCommentTree direction', () => {
     ])
   })
 
-  it('keeps parents before replies for both directions', () => {
+  it('keeps roots directional while replies remain chronological', () => {
     const comments = [
       comment({
         id: '1',
@@ -169,13 +169,13 @@ describe('buildCommentTree direction', () => {
 
     const desc = buildCommentTree(comments, 'desc')
     expect(desc.map((n) => n.id)).toEqual(['4', '1'])
-    expect(desc[1]?.children.map((n) => n.id)).toEqual(['3', '2'])
+    expect(desc[1]?.children.map((n) => n.id)).toEqual(['2', '3'])
   })
 
   it('sorts a child whose parent arrives later in the flat page correctly', () => {
     // The tree is built from all nodes before ordering, so a desc page that
     // returns the child before its parent still nests the child and then
-    // orders siblings by the same direction.
+    // orders replies chronologically, independent of root direction.
     const comments = [
       comment({
         id: '3',
@@ -198,7 +198,71 @@ describe('buildCommentTree direction', () => {
     ]
     const tree = buildCommentTree(comments, 'desc')
     expect(tree.map((n) => n.id)).toEqual(['1'])
-    expect(tree[0]?.children.map((n) => n.id)).toEqual(['3', '2'])
+    expect(tree[0]?.children.map((n) => n.id)).toEqual(['2', '3'])
+  })
+
+  it('sorts nested replies chronologically at every depth with decimal id ties', () => {
+    const comments = [
+      comment({
+        id: 'root',
+        created_at: '2026-08-11T09:00:00Z',
+        like_count: 0,
+      }),
+      comment({
+        id: 'late-root',
+        created_at: '2026-08-11T10:00:00Z',
+        like_count: 10,
+      }),
+      comment({
+        id: 'reply-30',
+        parent_id: 'root',
+        depth: 1,
+        created_at: '2026-08-11T09:02:00Z',
+        like_count: 100,
+      }),
+      comment({
+        id: 'reply-10',
+        parent_id: 'root',
+        depth: 1,
+        created_at: '2026-08-11T09:01:00Z',
+        like_count: 1,
+      }),
+      comment({
+        id: 'reply-20',
+        parent_id: 'root',
+        depth: 1,
+        created_at: '2026-08-11T09:01:00Z',
+        like_count: 50,
+      }),
+      comment({
+        id: 'grandchild-2',
+        parent_id: 'reply-30',
+        depth: 2,
+        created_at: '2026-08-11T09:04:00Z',
+        like_count: 1,
+      }),
+      comment({
+        id: 'grandchild-1',
+        parent_id: 'reply-30',
+        depth: 2,
+        created_at: '2026-08-11T09:03:00Z',
+        like_count: 100,
+      }),
+    ]
+
+    for (const sort of ['desc', 'hot'] as const) {
+      const tree = buildCommentTree(comments, sort)
+      expect(tree.map((n) => n.id)).toEqual(['late-root', 'root'])
+      expect(tree[1]?.children.map((n) => n.id)).toEqual([
+        'reply-10',
+        'reply-20',
+        'reply-30',
+      ])
+      expect(tree[1]?.children[2]?.children.map((n) => n.id)).toEqual([
+        'grandchild-1',
+        'grandchild-2',
+      ])
+    }
   })
 
   it('orders across different timestamps in both directions', () => {
@@ -288,7 +352,7 @@ describe('hot ordering', () => {
     expect(compareComments(one, missing, 'hot')).toBeLessThan(0)
   })
 
-  it('sorts every sibling level by own like count, preserving parents before replies', () => {
+  it('sorts roots by own like count while replies remain chronological', () => {
     const comments = [
       comment({ id: 'root', parent_id: null, depth: 0, like_count: 0 }),
       comment({ id: 'r2', parent_id: null, depth: 0, like_count: 3 }),
@@ -297,20 +361,20 @@ describe('hot ordering', () => {
         parent_id: 'root',
         depth: 1,
         like_count: 5,
-        created_at: '2026-08-11T09:01:00Z',
+        created_at: '2026-08-11T09:02:00Z',
       }),
       comment({
         id: 'c2',
         parent_id: 'root',
         depth: 1,
         like_count: 1,
-        created_at: '2026-08-11T09:02:00Z',
+        created_at: '2026-08-11T09:01:00Z',
       }),
     ]
     const tree = buildCommentTree(comments, 'hot')
     // Roots ranked by like_count desc: r2 (3) before root (0).
     expect(tree.map((n) => n.id)).toEqual(['r2', 'root'])
-    expect(tree[1]?.children.map((n) => n.id)).toEqual(['c1', 'c2'])
+    expect(tree[1]?.children.map((n) => n.id)).toEqual(['c2', 'c1'])
   })
 })
 

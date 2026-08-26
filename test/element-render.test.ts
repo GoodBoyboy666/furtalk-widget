@@ -2104,6 +2104,17 @@ describe('FurtalkCommentsElement hot sort tab', () => {
 })
 
 describe('FurtalkCommentsElement language control', () => {
+  const MOUNTED_LANGUAGE_HOST_TAG = 'furtalk-comments-language-test'
+
+  // The mounted interaction test needs a distinct constructor so it can use
+  // the real Shadow DOM event boundary without booting the network path.
+  class MountedLanguageElement extends FurtalkCommentsElement {
+    override boot(): void {}
+  }
+  if (!customElements.get(MOUNTED_LANGUAGE_HOST_TAG)) {
+    customElements.define(MOUNTED_LANGUAGE_HOST_TAG, MountedLanguageElement)
+  }
+
   interface LangComposer {
     comment: string
     body: string
@@ -2127,10 +2138,11 @@ describe('FurtalkCommentsElement language control', () => {
     selectLanguage(language: SupportedLanguage): void
   }
 
-  function langInstance(overrides: Partial<WidgetState> = {}): LangInstance {
-    const element = document.createElement(
-      COMPOSER_HOST_TAG,
-    ) as unknown as LangInstance
+  function langInstance(
+    overrides: Partial<WidgetState> = {},
+    tagName: string = COMPOSER_HOST_TAG,
+  ): LangInstance {
+    const element = document.createElement(tagName) as unknown as LangInstance
     element.language = 'zh-CN'
     element.languageMenuOpen = false
     element.configError = null
@@ -2172,6 +2184,9 @@ describe('FurtalkCommentsElement language control', () => {
     document
       .querySelectorAll(COMPOSER_HOST_TAG)
       .forEach((element) => (element as unknown as { languageMenuOpen: boolean }).languageMenuOpen = false)
+    document
+      .querySelectorAll(MOUNTED_LANGUAGE_HOST_TAG)
+      .forEach((element) => element.remove())
   })
 
   it('keeps the language trigger visible without a portal link for anonymous visitors', () => {
@@ -2306,6 +2321,98 @@ describe('FurtalkCommentsElement language control', () => {
     expect(localStorage.getItem('furtalk:language')).toBe('en')
     expect(instance.language).toBe('en')
     expect(instance.languageMenuOpen).toBe(false)
+  })
+
+  it('switches language through a mounted Shadow DOM pointer interaction', async () => {
+    const instance = langInstance(
+      {},
+      MOUNTED_LANGUAGE_HOST_TAG,
+    ) as LangInstance &
+      HTMLElement & {
+        shadowRoot: ShadowRoot
+        updateComplete: Promise<unknown>
+      }
+    for (const key of [
+      'siteId',
+      'pageKey',
+      'pageUrl',
+      'pageTitle',
+      'serviceOrigin',
+    ]) {
+      delete (instance as unknown as Record<string, unknown>)[key]
+    }
+    document.body.appendChild(instance)
+    await instance.updateComplete
+
+    const trigger =
+      instance.shadowRoot.querySelector<HTMLButtonElement>('.ft-lang-trigger')
+    expect(trigger).not.toBeNull()
+    trigger?.dispatchEvent(
+      new MouseEvent('click', { bubbles: true, composed: true }),
+    )
+    await instance.updateComplete
+
+    const menu = instance.shadowRoot.querySelector('.ft-lang-menu')
+    const english = menu?.querySelector<HTMLButtonElement>(
+      '[role="menuitemradio"][aria-checked="false"]',
+    )
+    expect(english).not.toBeNull()
+    english?.dispatchEvent(
+      new MouseEvent('mousedown', { bubbles: true, composed: true }),
+    )
+    english?.dispatchEvent(
+      new MouseEvent('click', { bubbles: true, composed: true }),
+    )
+    await instance.updateComplete
+
+    expect(
+      instance.shadowRoot.querySelector('.ft-widget')?.getAttribute('lang'),
+    ).toBe('en')
+    expect(
+      instance.shadowRoot
+        .querySelector('[data-sort="asc"]')
+        ?.textContent?.trim(),
+    ).toBe('Oldest first')
+    expect(localStorage.getItem('furtalk:language')).toBe('en')
+    expect(instance.languageMenuOpen).toBe(false)
+    expect(instance.shadowRoot.querySelector('.ft-lang-menu')).toBeNull()
+  })
+
+  it('closes the mounted language menu on a true outside pointer', async () => {
+    const instance = langInstance(
+      {},
+      MOUNTED_LANGUAGE_HOST_TAG,
+    ) as LangInstance &
+      HTMLElement & {
+        shadowRoot: ShadowRoot
+        updateComplete: Promise<unknown>
+      }
+    for (const key of [
+      'siteId',
+      'pageKey',
+      'pageUrl',
+      'pageTitle',
+      'serviceOrigin',
+    ]) {
+      delete (instance as unknown as Record<string, unknown>)[key]
+    }
+    document.body.appendChild(instance)
+    await instance.updateComplete
+
+    instance.shadowRoot
+      .querySelector<HTMLButtonElement>('.ft-lang-trigger')
+      ?.dispatchEvent(
+        new MouseEvent('click', { bubbles: true, composed: true }),
+      )
+    await instance.updateComplete
+    expect(instance.shadowRoot.querySelector('.ft-lang-menu')).not.toBeNull()
+
+    document.body.dispatchEvent(
+      new MouseEvent('mousedown', { bubbles: true, composed: true }),
+    )
+    await instance.updateComplete
+    expect(instance.languageMenuOpen).toBe(false)
+    expect(instance.shadowRoot.querySelector('.ft-lang-menu')).toBeNull()
   })
 
   it('keeps drafts, comments, and ordering across a language switch', () => {

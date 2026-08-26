@@ -69,10 +69,10 @@ export function mergeComments(
 /**
  * Builds a nested presentation by parent_id. Replies whose parent is not in
  * the current page are projected at the root level so no visible reply is
- * lost. All nodes are linked before any ordering is applied, then each level
- * (roots and every `children` array) is stable-sorted by `(created_at, id)`
- * in the requested direction — so parents always precede their replies even
- * when the flat server page happened to return a child first.
+ * lost. All nodes are linked before any ordering is applied. Roots use the
+ * selected root comparator, while every nested `children` array is sorted
+ * chronologically ascending by `(created_at, id)` so a thread reads from the
+ * earliest reply to the latest even when roots use descending or hot order.
  */
 export function buildCommentTree(
   comments: Comment[],
@@ -93,12 +93,21 @@ export function buildCommentTree(
       roots.push(node)
     }
   }
-  const sortLevel = (nodesToSort: CommentNode[]): void => {
-    nodesToSort.sort((a, b) => compareComments(a, b, sort))
-    for (const node of nodesToSort) sortLevel(node.children)
+  roots.sort((a, b) => compareComments(a, b, sort))
+  const sortReplies = (nodesToSort: CommentNode[]): void => {
+    nodesToSort.sort((a, b) => compareReplyComments(a, b))
+    for (const node of nodesToSort) sortReplies(node.children)
   }
-  sortLevel(roots)
+  for (const root of roots) sortReplies(root.children)
   return roots
+}
+
+/** Replies always read chronologically, independently of root sort mode. */
+function compareReplyComments(a: Comment, b: Comment): number {
+  const aTime = Date.parse(a.created_at)
+  const bTime = Date.parse(b.created_at)
+  if (aTime !== bTime) return aTime < bTime ? -1 : 1
+  return compareDecimalId(a.id, b.id)
 }
 
 /**

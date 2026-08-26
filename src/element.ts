@@ -642,7 +642,18 @@ export class FurtalkCommentsElement extends LitElement {
       const onPointerDown = (event: MouseEvent) => {
         const target = event.target as Node | null
         const control = this.renderRoot?.querySelector('.ft-lang')
-        if (control && target && !control.contains(target)) {
+        // Events dispatched inside this component's shadow root are retargeted
+        // to the custom-element host when they reach document. Inspect the
+        // composed path so a language-item press still counts as inside the
+        // control; keep the target/contains fallback for non-composed events
+        // and older event implementations.
+        const path = event.composedPath()
+        const isInside = control
+          ? path.length > 0
+            ? path.includes(control)
+            : Boolean(target && control.contains(target))
+          : false
+        if (control && !isInside) {
           this.setLanguageMenu(false)
           this.focusLanguageTrigger()
         }
