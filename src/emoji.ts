@@ -1,19 +1,18 @@
 /**
- * Furtalk-owned remote emoji-pack catalog boundary.
+ * Furtalk 维护的远程表情包目录。
  *
- * The catalog content is always supplied and licensed by the deployer through
- * the instance-wide `emoji_catalog_url` setting; this project distributes no
- * emoji data. The normative wire contract is
- * `research/emoji-pack-protocol.md` (root `{ packs: EmojiPack[] }` with closed
- * pack types `unicode | emotion | image`).
+ * 目录内容始终由部署方通过实例级 `emoji_catalog_url` 设置提供并获得授权；
+ * 本项目不分发任何表情数据。
+ * 协议规范见 `research/emoji-pack-protocol.md`（根为 `{ packs: EmojiPack[] }`，
+ * 包类型为 `unicode | emotion | image` 三者之一）。
  *
- * This module is the SINGLE owner of raw catalog payload handling. Raw source
- * types are `unknown`; normalized packs carry typed items and exact insertion
- * strings. UI and rendering code consume only the normalized `EmojiCatalog`
- * (plus the derived image token lookup) and never cast remote payload fields.
+ * 本模块是原始目录数据处理的唯一入口。原始数据类型为 `unknown`；
+ * 规范化后的包包含带类型的条目与精确的插入文本。
+ * UI 与渲染代码只使用规范化后的 `EmojiCatalog`（以及派生的图片查找表），
+ * 不会直接读取远程返回的字段。
  */
 
-/** Bounded catalog and payload limits (Furtalk defensive defaults). */
+/** 目录与载荷的有界上限（Furtalk 防御性默认值）。 */
 export const EMOJI_MAX_PAYLOAD_BYTES = 512 * 1024
 export const EMOJI_MAX_PACKS = 32
 export const EMOJI_MAX_ITEMS_PER_PACK = 256
@@ -24,37 +23,37 @@ export const EMOJI_MAX_CONTENT = 256
 export const EMOJI_MAX_SRC = 2048
 export const EMOJI_FETCH_TIMEOUT_MS = 5000
 
-/** Closed pack type union of the Furtalk emoji-pack protocol. */
+/** Furtalk 表情包协议定义的包类型。 */
 export type EmojiPackType = 'unicode' | 'emotion' | 'image'
 
-/** A normalized text-like item from a `unicode` or `emotion` pack. */
+/** 来自 `unicode` 或 `emotion` 包的规范化文本类条目。 */
 export interface TextEmojiItem {
   kind: 'text'
-  /** Stable token-safe id; never trusted markup. */
+  /** 稳定的 id，可安全用作令牌；不可当作可信标记。 */
   id: string
-  /** Human-readable label used for accessible name / tooltip. */
+  /** 人类可读的标签，用于无障碍名称 / 提示。 */
   name: string
-  /** Exact insertion string: the literal `content` value. */
+  /** 精确的插入文本：即 `content` 字段的原样值。 */
   content: string
   insertion: string
 }
 
-/** A normalized image item from an `image` pack. */
+/** 来自 `image` 包的规范化图片条目。 */
 export interface ImageEmojiItem {
   kind: 'image'
-  /** Stable token-safe id; `:<id>:` is the insertion and render token. */
+  /** 稳定的 id，可安全用作令牌；`:<id>:` 既是插入文本也是渲染令牌。 */
   id: string
-  /** Human-readable label used as the accessible name. */
+  /** 人类可读的标签，用作无障碍名称。 */
   name: string
-  /** Absolute HTTPS image URL resolved against the catalog response URL. */
+  /** 绝对 HTTPS 图片 URL，基于目录响应 URL 解析。 */
   src: string
-  /** Exact insertion string: always `:<id>:`. */
+  /** 精确的插入文本：始终为 `:<id>:`。 */
   insertion: string
 }
 
 export type EmojiItem = TextEmojiItem | ImageEmojiItem
 
-/** A normalized emoji pack with typed items. */
+/** 规范化后的表情包，包含带类型的条目。 */
 export interface EmojiPack {
   id: string
   name: string
@@ -63,16 +62,15 @@ export interface EmojiPack {
 }
 
 /**
- * A normalized catalog snapshot. Picker and Renderer consume the same
- * successfully decoded snapshot; `imageByToken` is the derived global image
- * item lookup keyed by token-safe id so `:<id>:` always has one meaning.
+ * 规范化后的目录快照。选择器与渲染器使用同一份成功解码的快照；
+ * `imageByToken` 是按 id 建立的全局图片查找表，保证 `:<id>:` 始终只有一个含义。
  */
 export interface EmojiCatalog {
   packs: EmojiPack[]
   imageByToken: Map<string, ImageEmojiItem>
 }
 
-/** Raw pack shape as parsed from JSON. */
+/** 从 JSON 解析出的原始包形状。 */
 interface RawPack {
   id?: unknown
   name?: unknown
@@ -80,7 +78,7 @@ interface RawPack {
   items?: unknown
 }
 
-/** Raw item shape as parsed from JSON. */
+/** 从 JSON 解析出的原始条目形状。 */
 interface RawItem {
   id?: unknown
   name?: unknown
@@ -88,7 +86,7 @@ interface RawItem {
   src?: unknown
 }
 
-/** A catalog error with a stable reason for the retry UI. */
+/** 目录加载错误，带有稳定的原因标识，供重试界面使用。 */
 export type CatalogErrorReason =
   | 'invalid-root'
   | 'invalid-schema'
@@ -110,18 +108,18 @@ export class CatalogError extends Error {
   }
 }
 
-/** Loader state surfaced to the picker. */
+/** 展示给选择器的加载状态。 */
 export type CatalogState = 'idle' | 'loading' | 'ready' | 'error'
 
-/** UTF-16 code point count; emoji surrogate pairs count as one. */
+/** UTF-16 码点计数；代理对（surrogate pair）按一个字符计。 */
 function codePoints(value: string): number {
   return Array.from(value).length
 }
 
-/** Bounded ASCII token-safe id grammar shared by packs and items. */
+/** 包与条目共用的 id 语法，限 ASCII 且可安全用作令牌。 */
 const TOKEN_ID_PATTERN = /^[a-z0-9][a-z0-9_-]*$/
 
-/** Rejects NUL, CR/LF, and other C0/C1 control characters. */
+/** 拒绝 NUL、CR/LF 及其他 C0/C1 控制字符。 */
 function hasControlCharacters(value: string): boolean {
   for (const char of value) {
     const code = char.codePointAt(0) ?? 0
@@ -132,22 +130,21 @@ function hasControlCharacters(value: string): boolean {
 }
 
 /**
- * Detects an ASCII HTML tag shape: `<` immediately followed by a letter,
- * `/`, `!`, or `?`. Names/content containing one are rejected so a selected
- * item or rendered label can never be interpreted as markup.
+ * 检测 ASCII HTML 标签形态：`<` 后紧跟字母、`/`、`!` 或 `?`。
+ * 名称/内容含此形态即被拒绝，确保选中的条目或渲染出的标签绝不会被当作 HTML 解析。
  */
 function hasHtmlTagShape(value: string): boolean {
   return /<[a-zA-Z/!?]/.test(value)
 }
 
-/** Validates a bounded token-safe id; rejects controls and markup shapes. */
+/** 校验 id（限长、可安全用作令牌）；拒绝控制字符与标记形态。 */
 function validTokenId(raw: unknown): raw is string {
   if (typeof raw !== 'string') return false
   if (raw.length > 64) return false
   return TOKEN_ID_PATTERN.test(raw)
 }
 
-/** Validates a bounded label: non-empty after trim, ≤ limit code points. */
+/** 校验长度受限的标签：去除首尾空格后非空，且码点数量不超过上限。 */
 function validLabel(raw: unknown, limit: number): raw is string {
   if (typeof raw !== 'string') return false
   const label = raw.trim()
@@ -158,7 +155,7 @@ function validLabel(raw: unknown, limit: number): raw is string {
   return true
 }
 
-/** Resolves a (possibly relative) image source against the catalog URL. */
+/** 将图片地址（可为相对路径）基于目录 URL 解析为绝对地址。 */
 function resolveImageUrl(src: string, catalogUrl: string): string {
   if (src === '') throw new CatalogError('unsafe-image')
   let resolved: URL
@@ -177,7 +174,7 @@ function resolveImageUrl(src: string, catalogUrl: string): string {
   return resolved.toString()
 }
 
-/** Decodes a `unicode` or `emotion` item; rejects `src` and unexpected keys. */
+/** 解码 `unicode` 或 `emotion` 条目；拒绝 `src` 等未预期字段。 */
 function decodeTextItem(raw: RawItem): TextEmojiItem {
   const keys = Object.keys(raw)
   if (
@@ -195,7 +192,7 @@ function decodeTextItem(raw: RawItem): TextEmojiItem {
   if (typeof raw.content !== 'string') {
     throw new CatalogError('invalid-schema')
   }
-  // 周边空白有意义，规范化时不做 trim。
+  // 周边空白有意义，规范化时不去除首尾空格。
   const content = raw.content
   if (codePoints(content) < 1 || codePoints(content) > EMOJI_MAX_CONTENT) {
     throw new CatalogError('invalid-schema')
@@ -215,7 +212,7 @@ function decodeTextItem(raw: RawItem): TextEmojiItem {
   }
 }
 
-/** Decodes an `image` item; rejects `content` and unexpected keys. */
+/** 解码 `image` 条目；拒绝 `content` 等未预期字段。 */
 function decodeImageItem(raw: RawItem, catalogUrl: string): ImageEmojiItem {
   const keys = Object.keys(raw)
   if (
@@ -250,7 +247,7 @@ function decodeImageItem(raw: RawItem, catalogUrl: string): ImageEmojiItem {
   }
 }
 
-/** Decodes one raw pack into a typed pack, or throws CatalogError. */
+/** 把一个原始包解码为带类型的包；失败时抛出 CatalogError。 */
 function decodePack(raw: RawPack, catalogUrl: string): EmojiPack {
   const keys = Object.keys(raw)
   if (
@@ -295,9 +292,9 @@ function decodePack(raw: RawPack, catalogUrl: string): EmojiPack {
 }
 
 /**
- * Decodes a raw emoji-pack JSON document into a normalized catalog snapshot.
- * Structural, size, security, uniqueness, and schema failures reject the whole
- * document atomically; there is no partial-pack fallback.
+ * 把原始表情包 JSON 文档解码为规范化目录快照。
+ * 结构、大小、安全性、唯一性或协议上的任何失败都会整体拒绝该文档；
+ * 不会出现部分包可用的情况。
  */
 export function decodeEmojiDocument(
   raw: unknown,
@@ -349,7 +346,7 @@ export function decodeEmojiDocument(
   return { packs, imageByToken }
 }
 
-/** Validates a configured catalog URL before fetching. */
+/** 校验配置的目录 URL 后再发起请求。 */
 export function isValidEmojiCatalogUrl(raw: string): boolean {
   const value = raw.trim()
   if (value === '') return false
@@ -369,7 +366,7 @@ export function isValidEmojiCatalogUrl(raw: string): boolean {
   )
 }
 
-/** Fetch options used for catalog requests; never credentialed. */
+/** 目录请求使用的 fetch 选项；绝不携带凭据。 */
 export interface EmojiCatalogFetchOptions {
   url: string
   signal?: AbortSignal
@@ -378,9 +375,8 @@ export interface EmojiCatalogFetchOptions {
 }
 
 /**
- * Loads and decodes the remote emoji-pack catalog. Failures throw
- * CatalogError with a stable reason; the caller surfaces the error and offers
- * retry.
+ * 加载并解码远程表情包目录。失败抛出带稳定原因的 CatalogError；
+ * 调用方展示错误并提供重试。
  */
 export async function loadEmojiCatalog(
   options: EmojiCatalogFetchOptions,
@@ -419,7 +415,7 @@ export async function loadEmojiCatalog(
       `catalog request failed (${response.status})`,
     )
   }
-  // The final redirect destination must stay HTTPS.
+  // 最终重定向目的地必须保持 HTTPS。
   try {
     const finalUrl = new URL(response.url)
     if (
@@ -449,7 +445,7 @@ export async function loadEmojiCatalog(
   return decodeEmojiDocument(raw, response.url)
 }
 
-/** Reads a response body bounded to the catalog payload cap. */
+/** 读取响应体，大小不超过目录载荷上限。 */
 async function readBounded(response: Response): Promise<string> {
   const length = Number(response.headers.get('Content-Length') ?? 0)
   if (length > EMOJI_MAX_PAYLOAD_BYTES) {

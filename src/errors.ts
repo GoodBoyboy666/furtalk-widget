@@ -1,9 +1,8 @@
 /**
- * Normalized widget errors.
+ * 规范化后的 widget 错误。
  *
- * Every failure surfaced by the widget (network, API envelope, session,
- * unsupported browser) is a WidgetError with a stable code the UI can branch
- * on for recoverable states.
+ * widget 遇到的每一个失败（网络、API 返回、会话、浏览器不支持）都会被转换成
+ * 携带稳定错误码的 WidgetError，UI 据此判断出错后如何处理（能否恢复）。
  */
 
 export type WidgetErrorCode =
@@ -44,12 +43,12 @@ export class WidgetError extends Error {
   }
 }
 
-/** Backend error envelope: {"error": {"code", "message", "request_id", "details"}}. */
+/** 后端错误信封：{"error": {"code", "message", "request_id", "details"}}。 */
 interface ApiErrorEnvelope {
   error?: { code?: string; message?: string; details?: Record<string, unknown> }
 }
 
-/** Maps backend error envelope codes to stable widget codes. */
+/** 将后端错误信封代码映射为稳定的 widget 代码。 */
 export function mapErrorCode(code: string): WidgetErrorCode {
   switch (code) {
     case 'invalid_request':
@@ -75,7 +74,7 @@ export function mapErrorCode(code: string): WidgetErrorCode {
   }
 }
 
-/** Normalizes an API response body + status into a WidgetError. */
+/** 将 API 响应体 + 状态码规范化为 WidgetError。 */
 export function normalizeApiError(data: unknown, status: number): WidgetError {
   const envelope = (
     typeof data === 'object' && data !== null ? data : {}
@@ -91,7 +90,7 @@ export function normalizeApiError(data: unknown, status: number): WidgetError {
   })
 }
 
-/** Normalizes any thrown value into a WidgetError, preserving existing codes. */
+/** 将任意抛出的值规范化为 WidgetError，并保留已有代码。 */
 export function toWidgetError(error: unknown): WidgetError {
   if (error instanceof WidgetError) return error
   if (error instanceof Error) {

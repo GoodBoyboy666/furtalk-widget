@@ -1,21 +1,20 @@
 /**
- * Profile hint validation and normalization.
+ * 资料提示的校验与规范化。
  *
- * Mirrors the backend public rules for immediate feedback; the server remains
- * authoritative. Invalid hints are never sent to first-party login or applied
- * as profile values.
+ * 校验规则与后端公开规则保持一致，用于即时反馈；最终仍以服务端为准。
+ * 无效资料绝不会传给第一方登录，也不会作为资料保存。
  */
 
 import type { ProfileHints } from './types'
 
 export const MAX_NICKNAME_LENGTH = 100
 
-/** Reports whether the value is a valid email address. */
+/** 报告值是否为有效的邮箱地址。 */
 export function isValidEmail(raw: string): boolean {
   const value = raw.trim()
   if (value === '' || value.length > 254) return false
-  // Minimal structural check matching the backend net/mail rules closely enough
-  // for client-side feedback; the server normalizes authoritatively.
+  // 一个与后端邮箱校验（net/mail）接近的最小结构检查，用于客户端即时反馈；
+  // 服务端仍负责最终校验。
   const at = value.lastIndexOf('@')
   if (at <= 0 || at === value.length - 1) return false
   const domain = value.slice(at + 1)
@@ -23,14 +22,14 @@ export function isValidEmail(raw: string): boolean {
   return !domain.includes('..')
 }
 
-/** Normalizes a nickname: trims and rejects empty/overlong values. */
+/** 规范化昵称：去除首尾空格，并拒绝空值/超长值。 */
 export function normalizeNickname(raw: string): string {
   const trimmed = raw.trim()
   if (trimmed === '' || trimmed.length > MAX_NICKNAME_LENGTH) return ''
   return trimmed
 }
 
-/** Reports whether the value is an absolute http(s) URL (empty is allowed). */
+/** 报告值是否为绝对 http(s) URL（允许为空）。 */
 export function isHttpUrl(raw: string): boolean {
   const trimmed = raw.trim()
   if (trimmed === '') return true
@@ -42,7 +41,7 @@ export function isHttpUrl(raw: string): boolean {
   }
 }
 
-/** Normalizes a website URL; returns '' when empty or invalid. */
+/** 规范化网站 URL；为空或无效时返回 ''。 */
 export function normalizeWebsite(raw: string): string {
   const trimmed = raw.trim()
   if (trimmed === '') return ''
@@ -57,8 +56,8 @@ export interface ValidationResult {
 }
 
 /**
- * Validates raw profile input and returns the safe values to store/send.
- * Invalid values are dropped (never block authorization or login).
+ * 校验原始资料输入，并返回安全的待存储/发送值。
+ * 无效值会被丢弃（绝不阻断授权或登录）。
  */
 export function validateProfileHints(raw: ProfileHints): ValidationResult {
   return {

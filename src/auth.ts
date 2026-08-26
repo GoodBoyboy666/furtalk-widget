@@ -1,17 +1,16 @@
 /**
- * Authorization flow orchestration.
+ * 授权流程编排。
  *
- * Runs the full widget->first-party handshake from the embedding page:
- * generate a high-entropy request id, open a fresh unnamed window (a normal
- * new tab; no popup/size window features), retry `authorization-init` until
- * `authorization-ready`, then wait for `authorization-success` /
- * `authorization-cancelled` / window close. The browser or user settings may
- * still choose a separate window even when no popup features are supplied.
+ * 在嵌入页面运行完整的 widget → 第一方握手流程：生成高熵请求 id，打开全新的
+ * 未命名窗口（普通新标签页；不附加 popup/size 等窗口特性），持续重试
+ * `authorization-init` 直到 `authorization-ready`，然后等待
+ * `authorization-success` / `authorization-cancelled` / 窗口关闭。
+ * 即使不提供任何弹窗特性，浏览器或用户设置仍可能选择打开独立窗口。
  *
- * Every message is validated against the expected Furtalk origin, the exact
- * opened window source, the schema, and the matching request_id. No message
- * uses targetOrigin="*". The deployment must preserve `window.opener`
- * (no noopener, no `Cross-Origin-Opener-Policy: same-origin`).
+ * 每条消息都会校验 Furtalk 源、窗口来源、协议结构以及 request_id 是否与预期匹配。
+ * 任何消息都不使用 targetOrigin="*"。
+ * 部署时必须保留 `window.opener`（不可使用 noopener，也不可设置
+ * `Cross-Origin-Opener-Policy: same-origin`）。
  */
 
 import {
@@ -27,10 +26,9 @@ export const INIT_RETRY_INTERVAL_MS = 150
 export const INIT_TIMEOUT_MS = 30_000
 export const RESULT_TIMEOUT_MS = 5 * 60_000
 /**
- * Window features passed to `window.open`. Intentionally empty: omitting
- * popup and sizing features expresses a normal new-tab preference while
- * keeping `window.opener` intact. Browsers or user settings may still open a
- * separate window; `noopener` is never added.
+ * 传给 `window.open` 的窗口特性。
+ * 刻意留空：省略 popup 与尺寸特性表示期望打开普通新标签页，同时保留
+ * `window.opener`。浏览器或用户设置仍可能打开独立窗口；不可添加 `noopener`。
  */
 export const POPUP_FEATURES = ''
 
@@ -42,7 +40,7 @@ export type AuthorizationOutcome =
   | { status: 'timeout'; requestId: string }
 
 export interface AuthorizationFlowOptions {
-  /** Exact Furtalk service origin (targetOrigin for every message). */
+  /** 确切的 Furtalk 服务源（每条消息的 targetOrigin）。 */
   furtalkOrigin: string
   siteId: string
   hints: ProfileHints
@@ -52,18 +50,18 @@ export interface AuthorizationFlowOptions {
 }
 
 export interface AuthorizationFlowHooks {
-  /** Send a validated message to the popup with an exact target origin. */
+  /** 向弹窗发送一条已通过校验、且带精确 target origin 的消息。 */
   postMessage: (target: Window, message: AuthorizationMessage) => void
-  /** Register a message listener; returns a remove function. */
+  /** 注册消息监听器；返回一个移除函数。 */
   listen: (listener: (event: MessageEvent) => void) => () => void
-  /** Report whether the popup window has been closed. */
+  /** 报告弹窗窗口是否已关闭。 */
   isClosed: (target: Window) => boolean
 }
 
 /**
- * Runs the authorization flow in a newly opened window/tab. Returns the
- * exchangeable code on explicit approval, or a recoverable outcome for
- * blocked/cancelled/closed/timeout.
+ * 在新打开的窗口/标签页中运行授权流程。
+ * 用户在显式批准时返回可交换的 code，否则返回可恢复的结果
+ * （blocked/cancelled/closed/timeout）。
  */
 export function runAuthorizationFlow(
   options: AuthorizationFlowOptions,
@@ -138,7 +136,7 @@ export function runAuthorizationFlow(
       postMessage(popup, message)
     }
 
-    // Retry the init handshake until the popup acknowledges, then stop.
+    // 持续重试初始化握手，直到弹窗确认，然后停止。
     initTimer = setInterval(() => {
       if (settled) return
       if (ready) {
@@ -157,7 +155,7 @@ export function runAuthorizationFlow(
         case 'furtalk:authorization-ready':
           ready = true
           if (readyTimer !== null) clearTimeout(readyTimer)
-          // Wait for the user's decision; the popup drives success/cancel.
+          // 等待用户决定；由弹窗驱动成功/取消。
           return
         case 'furtalk:authorization-success':
           settle({ status: 'success', code: message.code, requestId })
@@ -171,7 +169,7 @@ export function runAuthorizationFlow(
     }
     removeListener = listen(onMessage)
 
-    // Watch for the user closing the popup without a message.
+    // 侦测弹窗是否未发送协议消息而被直接关闭。
     closeTimer = setInterval(() => {
       if (settled) return
       if (isClosed(popup)) {
@@ -179,13 +177,13 @@ export function runAuthorizationFlow(
       }
     }, 250)
 
-    // A popup that never becomes ready is a failed handshake.
+    // 始终未就绪的弹窗视为握手失败。
     readyTimer = setTimeout(() => {
       if (settled || ready) return
       settle({ status: 'timeout', requestId })
     }, initTimeout)
 
-    // Absolute bound for the whole flow, independent of popup state.
+    // 整个流程的绝对时限，与弹窗状态无关。
     resultTimer = setTimeout(() => {
       if (settled) return
       settle({ status: 'timeout', requestId })
@@ -194,7 +192,7 @@ export function runAuthorizationFlow(
 }
 
 /**
- * Returns true when the message is a valid authorization protocol message.
- * Re-exported for the widget entry point so consumers share one decoder.
+ * 当消息为有效的授权协议消息时返回 true。
+ * 为 widget 入口重新导出，使各消费方共享同一个解码器。
  */
 export { isAuthorizationMessage }

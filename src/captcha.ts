@@ -1,14 +1,13 @@
 /**
- * CAPTCHA rendering for the widget.
+ * Widget 的 CAPTCHA 渲染。
  *
- * Renders the public runtime-config CAPTCHA projection into a Shadow DOM
- * container for turnstile / reCAPTCHA / hCaptcha / CAP. Provider scripts are
- * injected on demand; CAP uses the official `cap-widget` custom element.
+ * 把运行时配置中的 CAPTCHA 信息渲染进 Shadow DOM 容器，可接入
+ * turnstile / reCAPTCHA / hCaptcha / CAP 等验证码服务，脚本按需加载；
+ * CAP 使用官方的 `cap-widget` 自定义元素。
  *
- * The runtime-config projection is a render hint only: write endpoints re-read
- * and enforce the live policy. If the provider is unconfigured, the projection
- * lacks render data, or the provider script fails to load, rendering is
- * treated as "not required" and the server remains the final authority.
+ * 这里的运行时配置只是渲染提示：写入接口会重新读取并强制执行实时策略。
+ * 若验证码服务未配置、配置缺少渲染数据，或脚本加载失败，
+ * 则按“无需验证码”处理，最终以服务端为准。
  */
 
 import type { CaptchaProjection } from './types'
@@ -22,7 +21,7 @@ export const captchaProviders: ReadonlySet<string> = new Set([
   'cap',
 ])
 
-/** External script URLs for the explicit-render provider APIs. */
+/** 采用显式渲染模式的验证码脚本地址。 */
 const scriptURLs: Partial<Record<Exclude<CaptchaProvider, 'cap'>, string>> = {
   turnstile:
     'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit',
@@ -52,7 +51,7 @@ declare global {
   }
 }
 
-/** Reports whether the projection carries enough data to attempt rendering. */
+/** 判断配置信息是否完整、能否开始渲染。 */
 export function canRenderCaptcha(
   projection: CaptchaProjection | undefined,
 ): boolean {
@@ -63,7 +62,7 @@ export function canRenderCaptcha(
 
 const loadingScripts = new Map<string, Promise<void>>()
 
-/** Injects a provider script and waits for the global render instance. */
+/** 加载验证码脚本，并等待全局渲染对象就绪。 */
 function loadProviderScript(
   provider: Exclude<CaptchaProvider, 'cap'>,
 ): Promise<void> {
@@ -137,8 +136,8 @@ interface RenderedChallenge {
 }
 
 /**
- * Renders the CAPTCHA into `container` and returns a reset handle, or null
- * when the projection is not renderable. `onToken('')` signals expiry/reset.
+ * 将 CAPTCHA 渲染到 `container` 中并返回重置句柄；当配置信息不足以渲染时返回 null。
+ * `onToken('')` 表示令牌过期/重置。
  */
 export async function mountCaptcha(
   container: HTMLElement,
@@ -153,7 +152,7 @@ export async function mountCaptcha(
   try {
     await loadProviderScript(provider)
   } catch {
-    // Rendering is a hint; the server enforces the live policy.
+    // 客户端的渲染按配置展示；是否必须验证码、token 是否有效，都由服务端在提交时强制校验。
     return null
   }
   const rendered = renderHosted(container, provider, projection, onToken)
@@ -230,7 +229,8 @@ async function mountCap(
   onToken: (token: string) => void,
 ): Promise<CaptchaHandle | null> {
   if (!projection.api_endpoint) return null
-  // Loads the cap-widget custom element registration once.
+  // 通过 import('cap-widget') 把 cap-widget 自定义元素注册到浏览器；
+  // 模块加载有缓存，注册只会发生一次。
   try {
     await import('cap-widget')
   } catch {
@@ -257,7 +257,7 @@ async function mountCap(
       try {
         cap.reset?.()
       } catch {
-        // Ignore reset failures; the token is cleared by the event listener.
+        // 忽略重置失败；令牌由事件监听器清空。
       }
       onToken('')
     },

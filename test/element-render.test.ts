@@ -45,8 +45,8 @@ const ownerSession: WidgetSession = {
 }
 
 // renderNodeHost 直接渲染私有 renderNode 的 Lit 模板到 jsdom 容器，
-// 以便断言 Markdown 输出在 DOM 边界以 HTML 而非转义文本呈现。
-// session 与 deletingId 用于覆盖删除确认态与所有权渲染分支。
+// 以便断言 Markdown 输出进入 DOM 时是真实 HTML，而不是被转义的文本。
+// session 与 deletingId 用来测试删除确认状态和所有权渲染的不同情况。
 function renderNodeHost(
   comment: CommentNode,
   session?: WidgetSession,
@@ -92,7 +92,7 @@ describe('FurtalkCommentsElement Markdown boundary', () => {
     const host = renderNodeHost(
       node({ id: '3', body: '<img src=x onerror="window.__xss=1">hello' }),
     )
-    // 唯一的 img 是作者头像，恶意 raw HTML 必须被转义为文本而非 DOM。
+    // 唯一的 img 是作者头像；恶意原始 HTML 必须转义成文本，不能作为元素插入 DOM。
     expect(host.querySelector('img[src="x"]')).toBeNull()
     expect(host.innerHTML).toContain('&lt;img')
     expect((window as { __xss?: number }).__xss).toBeUndefined()
@@ -167,7 +167,7 @@ describe('FurtalkCommentsElement administrator Badge', () => {
         '.ft-admin',
       ),
     ).toBeNull()
-    // 旧缓存响应在滚动发布期间可能缺 author_role，必须安全降级为不显示。
+    // 分阶段上线期间，旧缓存响应可能缺少 author_role，必须安全降级为不显示。
     expect(
       renderNodeHost(node({ id: '3' })).querySelector('.ft-admin'),
     ).toBeNull()
@@ -222,7 +222,7 @@ describe('FurtalkCommentsElement reply-target label', () => {
 
   it('keeps the reply label when the parent comment is missing from the list', () => {
     // 父评论因普通分页未加载而缺失时，parent_id 仍存在，回复标签继续显示；
-    // 该情形与软删除压缩无关，Widget 根级兜底仍成立。
+    // 这种情况与软删除压缩无关，根级回退逻辑仍然生效。
     const host = renderNodeHost(
       node({
         id: '4',
@@ -238,7 +238,7 @@ describe('FurtalkCommentsElement reply-target label', () => {
   })
 
   it('hides the reply label when the comment is promoted to a public root', () => {
-    // 软删除压缩后补位到根的评论 parent_id 为 null，即使持久化 depth > 0
+    // 软删除压缩后上移到根层的评论 parent_id 为 null，即使持久化的 depth > 0，
     // 也不再表现为嵌套节点。
     const host = renderNodeHost(
       node({
@@ -327,9 +327,9 @@ describe('FurtalkCommentsElement long-region collapse', () => {
     comment: CommentNode,
   ): Promise<HTMLElement> {
     element.boot = () => undefined
-    // Lit's dev build rejects class-field shadowing once an element is
-    // connected. The production widget has the same pre-existing fields, so
-    // mirror the style-adoption test's setup before awaiting the first update.
+    // Lit 的开发构建在元素已连接后会拒绝类字段遮蔽。
+    // 生产 widget 同样存在这些预置字段，因此这里模仿样式采用测试的初始化方式，
+    // 再等待首次更新。
     for (const key of [
       'siteId',
       'pageKey',
@@ -594,8 +594,8 @@ describe('FurtalkCommentsElement delete confirmation copy', () => {
 
 describe('FurtalkCommentsElement anonymous ownership', () => {
   it('never shows delete in anonymous mode even with a matching stale user id', () => {
-    // A stale anonymous credential or missing credential_mode must never
-    // project ownership; the server stays authoritative for deletion.
+    // 陈旧的匿名凭据或缺失的 credential_mode，绝不能判定为拥有该评论；
+    // 删除操作以服务端为准。
     const stale = renderNodeHost(node({ id: '7', user_id: '10' }), {
       valid: true,
       user_id: '10',
@@ -616,7 +616,7 @@ describe('FurtalkCommentsElement anonymous ownership', () => {
 })
 
 // composerHost 直接渲染私有 renderRootComposer 的 Lit 模板，用于断言资料行
-// 在两种评论模式下都常驻可见、无折叠开关、无独立保存按钮。
+// 在两种评论模式下都始终可见、没有折叠开关、也没有单独的保存按钮。
 const COMPOSER_HOST_TAG = 'furtalk-comments-render-test'
 if (!customElements.get(COMPOSER_HOST_TAG)) {
   customElements.define(COMPOSER_HOST_TAG, FurtalkCommentsElement)
@@ -929,7 +929,7 @@ describe('FurtalkCommentsElement two-layer logout', () => {
     )
     expect(instance.widgetNotice?.reopenLogout).toBe(true)
     await new Promise((resolve) => setTimeout(resolve, 0))
-    // The widget session is still cleared by its own request result.
+    // widget 会话仍由它自己的请求结果清除。
     expect(instance.state.session).toEqual({ valid: false })
   })
 })
@@ -1155,8 +1155,8 @@ describe('FurtalkCommentsElement unified create', () => {
 
     await instance.createComment(composer)
 
-    // ensureAuthenticated is stubbed to succeed, so the retry re-runs and gets
-    // need_auth_code again: the flow must stop instead of looping forever.
+    // ensureAuthenticated 被模拟为成功，因此重试会再次运行并再次得到 need_auth_code：
+    // 流程必须停止而不是无限循环。
     expect(createMock).toHaveBeenCalledTimes(2)
     expect(
       renderMessage(composer.error as unknown as DisplayMessage, 'zh-CN'),
@@ -1345,8 +1345,8 @@ describe('FurtalkCommentsElement composer command group', () => {
   })
 })
 
-// readyViewHost 直接渲染 ready 状态的整页视图，用于断言评论框下方排序控件与
-// 成功 notice 的 DOM 呈现。
+// readyViewHost 直接渲染就绪状态的整页视图，用于断言评论框下方的排序控件与
+// 成功提示的 DOM 呈现。
 interface ReadyViewInstance {
   state: WidgetState
   hints: ProfileHints
@@ -1391,8 +1391,8 @@ function readyViewHost(overrides: Partial<WidgetState> = {}): HTMLDivElement {
   return host
 }
 
-// maskedViewHost 渲染 ready 视图并预置打开的掩膜 key，用于断言掩膜
-// 恰好渲染一次且位于 Widget 根级（空评论区与多评论场景都不重复渲染）。
+// maskedViewHost 渲染就绪视图并预设一个打开的掩膜，用于断言掩膜
+// 恰好渲染一次且位于 Widget 根层（空评论区与多评论场景都不重复渲染）。
 function maskedViewHost(
   key: 'root' | 'reply',
   overrides: Partial<WidgetState> = {},
@@ -1480,9 +1480,8 @@ describe('FurtalkCommentsElement compiled stylesheet', () => {
 describe('FurtalkCommentsElement shadow DOM style adoption', () => {
   const tagName = 'furtalk-comments-shadow-test'
 
-  // FurtalkCommentsElement is already registered under other test tags in this
-  // suite, and a custom element constructor can only be registered once.
-  // Subclass it so this tag gets a distinct, registerable constructor.
+  // FurtalkCommentsElement 已在本套件其他测试标签下注册，而自定义元素构造器只能
+  // 注册一次。派生子类，使该标签获得独立、可注册的构造器。
   class ShadowTestElement extends FurtalkCommentsElement {}
 
   afterEach(() => {
@@ -1497,12 +1496,11 @@ describe('FurtalkCommentsElement shadow DOM style adoption', () => {
       boot: () => void
       updateComplete: Promise<unknown>
     }
-    // Avoid the real boot/network path; we only assert on the render root.
+    // 不走真实的启动和网络流程；我们只断言渲染根。
     element.boot = () => undefined
-    // The widget declares its reactive attributes both as class fields and in
-    // `static properties`. That shadows Lit's reactive accessors, which the
-    // dev-mode build rejects when an instance is connected. Delete the own
-    // fields so the first update path can run (production builds are unaffected).
+    // widget 同时以类字段和 `static properties` 声明响应式属性，这会遮蔽 Lit 的
+    // 响应式访问器，开发构建在实例连接时会报错。
+    // 删除这些类字段，让首次更新流程可以运行（生产构建不受影响）。
     for (const key of [
       'siteId',
       'pageKey',
@@ -1538,7 +1536,7 @@ describe('FurtalkCommentsElement captcha host alignment', () => {
       ? styles.map((s) => s.cssText).join('\n')
       : styles.cssText
     // 掩膜必须是视口固定定位（全屏遮罩），而不是相对 .ft-widget 的内容区域。
-    // 这些由 mask 模板上的 `fixed inset-0` 静态工具类编译而来。
+    // 这些由掩膜模板上的 `fixed inset-0` 静态工具类编译而来。
     expect(cssText).toContain('position: fixed')
     expect(cssText).toContain('inset: 0')
     expect(cssText).toContain('z-index: 2147483647')
@@ -1729,7 +1727,7 @@ describe('FurtalkCommentsElement success notice', () => {
 
 describe('FurtalkCommentsElement captcha mask render', () => {
   it('renders the mask once at the widget root on an empty thread', () => {
-    // 空评论区时 renderNode 不运行，掩膜必须由 Widget 根级渲染恰好一次。
+    // 空评论区时 renderNode 不运行，掩膜必须由 Widget 根层只渲染一次。
     const host = maskedViewHost('root')
     const masks = host.querySelectorAll('.ft-captcha-mask')
     expect(masks).toHaveLength(1)
@@ -1756,7 +1754,7 @@ describe('FurtalkCommentsElement captcha mask render', () => {
 
   it('does not render an inline provider host in the composer', () => {
     const host = maskedViewHost('root')
-    // 内联 composer 中不允许出现 data-captcha-host；只有掩膜内宿主存在。
+    // 内联编辑器中不允许出现 data-captcha-host；只有掩膜内的容器存在。
     const composerHosts = host.querySelectorAll(
       '.ft-composer [data-captcha-host]',
     )
@@ -1816,7 +1814,7 @@ describe('FurtalkCommentsElement load-more button', () => {
 })
 
 describe('FurtalkCommentsElement load-more retry', () => {
-  // loadMoreHost 构造真实 loadPage 所需的 element（api 的 listComments 可注入）。
+  // loadMoreHost 为真实的 loadPage 调用准备元素（api 的 listComments 可以注入）。
   function loadMoreHost() {
     const element = document.createElement(COMPOSER_HOST_TAG) as unknown as {
       config: { siteId: string; pageKey: string; serviceOrigin: string }
@@ -2106,8 +2104,8 @@ describe('FurtalkCommentsElement hot sort tab', () => {
 describe('FurtalkCommentsElement language control', () => {
   const MOUNTED_LANGUAGE_HOST_TAG = 'furtalk-comments-language-test'
 
-  // The mounted interaction test needs a distinct constructor so it can use
-  // the real Shadow DOM event boundary without booting the network path.
+  // 挂载交互测试需要独立的构造器，以便在不发起真实网络请求的前提下，
+  // 使用真实的 Shadow DOM 事件边界。
   class MountedLanguageElement extends FurtalkCommentsElement {
     override boot(): void {}
   }
@@ -2180,7 +2178,7 @@ describe('FurtalkCommentsElement language control', () => {
 
   afterEach(() => {
     localStorage.clear()
-    // 清理任何遗留的 document 级菜单关闭监听器。
+    // 清理任何残留的 document 级菜单关闭监听器。
     document
       .querySelectorAll(COMPOSER_HOST_TAG)
       .forEach((element) => (element as unknown as { languageMenuOpen: boolean }).languageMenuOpen = false)

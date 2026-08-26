@@ -1,8 +1,8 @@
 /**
- * Widget entry point.
+ * Widget 入口。
  *
- * Registers the <furtalk-comments> custom element and re-exports the typed
- * API/message contracts for integrators and the authorization popup host.
+ * 注册 <furtalk-comments> 自定义元素，并为集成方与授权弹窗宿主
+ * 重新导出类型化的 API 与消息类型。
  */
 
 import { FurtalkCommentsElement } from './element'

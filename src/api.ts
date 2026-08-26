@@ -1,10 +1,9 @@
 /**
- * Typed Widget API client.
+ * 类型化的 Widget API 客户端。
  *
- * All cross-origin calls use credentials: "include" so the partitioned CHIPS
- * widget cookie is sent. Paths are resolved against the configured Furtalk
- * service origin. The browser supplies the exact Host Origin; the server's CORS
- * and live origin authorization remain authoritative.
+ * 所有跨域请求都携带 credentials: "include"，以便发送分区 CHIPS Widget cookie。
+ * 请求地址基于配置的 Furtalk 服务源生成；Host Origin 由浏览器提供。
+ * 以服务端的 CORS 与实时源授权为准。
  */
 
 import { normalizeApiError, toWidgetError, WidgetError } from './errors'
@@ -21,8 +20,8 @@ import type {
 } from './types'
 
 /**
- * Widget comment page size. The widget explicitly requests 10 flat records so
- * the first screen stays light; the server default remains untouched.
+ * Widget 评论分页大小。Widget 显式请求 10 条平铺记录，以保持首屏轻量；
+ * 服务端默认值不受影响。
  */
 export const WIDGET_PAGE_SIZE = 10
 
@@ -93,9 +92,8 @@ export class ApiClient {
       limit: String(limit),
     })
     if (cursor) params.set('cursor', cursor)
-    // A cursor is only meaningful with the direction that produced it; the
-    // widget always sends the active sort so first pages and load-more pages
-    // agree. The server validates the controlled value.
+    // 游标只对产生它的排序方式有效，因此每次请求都附带当前排序，
+    // 保证首页与“加载更多”页排序一致。排序值由服务端校验。
     if (sort) params.set('sort', sort)
     return this.request<ThreadResponse>(
       'GET',
@@ -120,11 +118,11 @@ export class ApiClient {
   }
 
   /**
-   * Creates a root comment or reply through the unified widget comment
-   * endpoint. Every request carries the required email/nickname plus the
-   * tri-state website URL. A `200` with `{need_auth_code: true}` means the
-   * submitted email maps to an administrator that must first complete the
-   * first-party authorization flow; a `201` carries the created comment.
+   * 通过统一的 Widget 评论端点创建根评论或回复。
+   * 每次请求都携带必填的邮箱、昵称，以及网站 URL（三选一：省略表示保留，
+   * null/空表示清空，非空 URL 表示替换）。
+   * 若返回 `200` 且带 `{need_auth_code: true}`，表示该邮箱对应一位管理员，
+   * 须先完成第一方授权流程；返回 `201` 表示评论已创建。
    */
   createComment(
     siteId: string,
@@ -157,8 +155,7 @@ export class ApiClient {
   }
 
   /**
-   * Adds a Like to a published comment. The widget cookie supplies the
-   * credential; both add and remove are idempotent on the server.
+   * 为一条已发布评论点赞。Widget cookie 提供凭据；服务端保证添加和取消都是幂等的。
    */
   likeComment(siteId: string, commentId: string): Promise<LikeResult> {
     return this.request<LikeResult>(
@@ -167,7 +164,7 @@ export class ApiClient {
     )
   }
 
-  /** Removes the current viewer's Like from a published comment (idempotent). */
+  /** 移除当前浏览者对某条已发布评论的赞（幂等）。 */
   unlikeComment(siteId: string, commentId: string): Promise<LikeResult> {
     return this.request<LikeResult>(
       'DELETE',
@@ -175,7 +172,7 @@ export class ApiClient {
     )
   }
 
-  /** Pins a published root comment for an administrator Widget session. */
+  /** 以管理员 Widget 会话置顶一条已发布的根评论。 */
   pinComment(siteId: string, commentId: string): Promise<PinResult> {
     return this.request<PinResult>(
       'PUT',
@@ -183,7 +180,7 @@ export class ApiClient {
     )
   }
 
-  /** Removes a root comment from the pinned group for an administrator Widget session. */
+  /** 以管理员 Widget 会话将一条根评论移出置顶组。 */
   unpinComment(siteId: string, commentId: string): Promise<PinResult> {
     return this.request<PinResult>(
       'DELETE',

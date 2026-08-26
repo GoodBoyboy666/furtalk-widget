@@ -1,10 +1,10 @@
 /**
- * Authorization postMessage protocol helpers.
+ * 授权 postMessage 协议辅助函数。
  *
- * The widget generates a 128-bit-or-stronger random request_id and opens a
- * fresh unnamed window (a normal new tab). Every message is validated for the
- * expected exact origin, exact window source, schema, and matching request_id
- * before acting. No protocol message ever uses targetOrigin="*".
+ * widget 生成 128 位或更强的随机 request_id，并打开全新的未命名窗口
+ * （普通新标签页）。
+ * 每条消息都会先校验发送源、窗口来源、协议结构以及 request_id 是否匹配预期。
+ * 任何协议消息都不使用 targetOrigin="*"。
  */
 
 import type { AuthorizationMessage } from './types'
@@ -12,7 +12,7 @@ import { isAuthorizationMessage } from './types'
 
 export const AUTHORIZATION_PATH = '/authorize'
 
-/** Generates a URL-safe base64url-encoded 128-bit request id with Web Crypto. */
+/** 用 Web Crypto 生成 URL 安全的 base64url 编码 128 位请求 id。 */
 export function generateRequestId(random?: () => Uint8Array): string {
   const bytes = random ? random() : crypto.getRandomValues(new Uint8Array(16))
   let binary = ''
@@ -27,8 +27,8 @@ export interface MessageValidation {
 }
 
 /**
- * Validates a received message event and returns the decoded protocol message,
- * or null when the origin/source/schema/request_id do not all match.
+ * 校验收到的消息事件，返回解码后的协议消息；
+ * 当来源、结构或 request_id 与预期不符时返回 null。
  */
 export function acceptAuthorizationMessage(
   event: MessageEvent,
@@ -42,7 +42,7 @@ export function acceptAuthorizationMessage(
   return event.data
 }
 
-/** Builds the authorization URL carrying only site_id and request_id. */
+/** 构建仅携带 site_id 与 request_id 的授权 URL。 */
 export function authorizationUrl(
   furtalkOrigin: string,
   siteId: string,

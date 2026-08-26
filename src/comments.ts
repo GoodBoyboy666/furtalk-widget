@@ -1,9 +1,9 @@
 /**
- * Flat comment page merging and nested reply projection.
+ * 合并平铺的评论页，并组装嵌套的回复树。
  *
- * The server returns a flat (created_at, id) ordered list. Pages are merged by
- * comment id before the nested reply tree is rebuilt so cursor loads never
- * duplicate comments or reorder the visible thread.
+ * 服务端返回的是按 (created_at, id) 排序的平铺列表，不分层级。
+ * 在组装嵌套回复树之前，先按评论 id 合并各页，使游标加载不会重复评论，
+ * 也不会打乱已显示的评论顺序。
  */
 
 import type { Comment, CommentSort, WidgetSession } from './types'
@@ -14,13 +14,12 @@ export interface CommentNode extends Comment {
 }
 
 /**
- * Stable ordering comparison used by the nested reply tree.
+ * 回复树的排序比较函数，保证结果稳定、可复现。
  *
- * Root comments are grouped by `is_pinned` first. Directional modes then sort
- * by `(created_at, id)` ascending or descending. Hot
- * sorts by the comment's own Like count descending, with `(created_at, id)`
- * descending as the deterministic tie-breaker — matching the server keyset.
- * Descendant Likes are never aggregated into an ancestor.
+ * 根评论先按是否置顶（`is_pinned`）分组；升序/降序模式再按 (created_at, id) 排序。
+ * 最热模式按评论自身点赞数从多到少排列；点赞数相同时再按 (created_at, id) 降序
+ * 决定先后，和服务端的 keyset 排序一致。
+ * 后代的点赞不会累加到祖先。
  */
 export function compareComments(
   a: Comment,
@@ -53,8 +52,8 @@ function compareDecimalId(a: string, b: string): number {
 }
 
 /**
- * Merges flat comment pages by id while retaining the first-seen server order.
- * A fresh page replaces the list; only cursor appends use this merge.
+ * 按 id 合并平铺评论页，同时保留首次见到的服务端顺序。
+ * 全新的一页会直接替换列表；只有游标追加才使用本合并。
  */
 export function mergeComments(
   existing: Comment[],
@@ -67,12 +66,11 @@ export function mergeComments(
 }
 
 /**
- * Builds a nested presentation by parent_id. Replies whose parent is not in
- * the current page are projected at the root level so no visible reply is
- * lost. All nodes are linked before any ordering is applied. Roots use the
- * selected root comparator, while every nested `children` array is sorted
- * chronologically ascending by `(created_at, id)` so a thread reads from the
- * earliest reply to the latest even when roots use descending or hot order.
+ * 按 parent_id 构建嵌套展示结构。父评论不在当前页内的回复会提升为根节点展示，
+ * 以免可见回复丢失。
+ * 先按 parent_id 建立节点关联，再统一排序。根节点使用所选的比较器；每个嵌套的
+ * `children` 数组按 `(created_at, id)` 升序排列，因此即使根节点使用降序或最热排序，
+ * 回复仍从最早到最新排列。
  */
 export function buildCommentTree(
   comments: Comment[],
@@ -102,7 +100,7 @@ export function buildCommentTree(
   return roots
 }
 
-/** Replies always read chronologically, independently of root sort mode. */
+/** 回复始终按时间升序读取，与根排序模式无关。 */
 function compareReplyComments(a: Comment, b: Comment): number {
   const aTime = Date.parse(a.created_at)
   const bTime = Date.parse(b.created_at)
@@ -111,10 +109,9 @@ function compareReplyComments(a: Comment, b: Comment): number {
 }
 
 /**
- * Derives the success-notice translation key for a created comment. A
- * `pending` status means the comment awaits moderation; `published` is shown
- * directly. Any other status (or a non-comment create result) yields no
- * success notice so a failed request can never display success feedback.
+ * 根据已创建评论的状态，得出成功提示对应的文案键。
+ * `pending` 表示评论等待审核；`published` 表示已上线，直接展示。
+ * 其他状态（或非评论的创建结果）都不产生成功提示，保证失败的请求不会显示成功反馈。
  */
 export function submissionNotice(
   status: Comment['status'],
@@ -125,9 +122,8 @@ export function submissionNotice(
 }
 
 /**
- * Reports whether a comment is owned by the current widget session.
- * Only authenticated-mode sessions may own deletable comments; the backend
- * remains authoritative.
+ * 报告某条评论是否属于当前 widget 会话。
+ * 只有认证模式下的会话才可能拥有可删除的评论；能否删除以服务端判断为准。
  */
 export function isOwnedBy(
   comment: Comment,
@@ -139,7 +135,7 @@ export function isOwnedBy(
   return session.user_id === comment.user_id
 }
 
-/** Reports whether the thread still has a next page to load. */
+/** 报告线程是否还有下一页待加载。 */
 export function hasNextPage(
   thread: { next_cursor: string | null } | undefined,
 ): boolean {

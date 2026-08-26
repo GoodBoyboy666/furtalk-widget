@@ -198,14 +198,14 @@ describe('widgetReducer', () => {
     })
     expect(desc.sort).toBe('desc')
 
-    // Pre-rollout backends omit comment_sort; the compatibility default is asc.
+    // 旧版后端不返回 comment_sort；按兼容默认值 asc 处理。
     const missing = widgetReducer(initialState, {
       type: 'config/loaded',
       config: {} as never,
     })
     expect(missing.sort).toBe('asc')
 
-    // Unknown values fail closed to asc.
+    // 未知值按 asc 处理。
     const invalid = widgetReducer(initialState, {
       type: 'config/loaded',
       config: { comment_sort: 'sideways' } as never,

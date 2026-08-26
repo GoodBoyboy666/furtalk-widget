@@ -1,11 +1,10 @@
 /**
- * Page configuration parsing for the <furtalk-comments> element.
+ * <furtalk-comments> Element页面的配置解析。
  *
- * `site-id` is required. `page-key` is required by default; the explicit value
- * `"location"` derives a stable key from location.pathname + location.search.
- * `page-url` / `page-title` default to the host document values and remain
- * overridable attributes. `service-origin` is optional; the element supplies
- * its default from import.meta.url.
+ * `site-id` 必填。`page-key` 默认必填；显式值 `"location"` 会从
+ * location.pathname + location.search 推导稳定的键。
+ * `page-url` / `page-title` 默认取宿主文档的值，且仍可作为属性覆盖。
+ * `service-origin` 可选；不填时元素从 import.meta.url 取默认值。
  */
 
 export interface WidgetConfig {
@@ -17,9 +16,8 @@ export interface WidgetConfig {
 }
 
 /**
- * Stable configuration-error code plus optional parameters. The element
- * translates the code into the active locale at the UI boundary; no display
- * sentence is produced here.
+ * 稳定的配置错误代码及可选参数。展示时由Element将代码翻译成当前语言；
+ * 此处不生成任何提示文字。
  */
 export type ConfigErrorCode =
   | 'invalid_site_id'
@@ -36,7 +34,7 @@ export const MAX_PAGE_KEY_LENGTH = 512
 
 const DECIMAL_ID = /^[1-9][0-9]*$/
 
-/** Reports whether the value is an absolute https origin (http localhost allowed for dev). */
+/** 报告值是否为绝对 https 源（开发环境允许 http localhost）。 */
 export function isServiceOrigin(raw: string): boolean {
   if (!raw) return false
   try {
@@ -78,8 +76,7 @@ export function parseWidgetConfig(
     }
   }
 
-  // page-url / page-title default to the host document values; explicit
-  // attributes always win.
+  // page-url / page-title 默认取宿主文档的值；显式属性始终优先。
   const pageUrl =
     (attrs['page-url'] ?? '').trim() ||
     documentDefaults?.href.trim() ||

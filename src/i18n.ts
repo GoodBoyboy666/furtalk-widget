@@ -1,22 +1,19 @@
 /**
- * Widget internationalization core.
+ * Widget 国际化核心。
  *
- * Single owner of the widget's supported languages, static zh-CN/en catalogs,
- * browser/storage language resolution, interpolation, locale-aware relative
- * and date formatting, and the discriminated display-message shape.
+ * widget 支持的语言、静态 zh-CN/en 文案目录、浏览器/存储语言解析、插值、
+ * 相对时间与日期格式化，以及带类型标记的消息展示结构，都由本模块统一负责。
  *
- * Catalog keys are semantic and independent from the displayed text. The
- * `en` catalog is typed against the `zh-CN` key set so a key added or removed
- * in one locale must be mirrored in the other at compile time. Raw backend /
- * external text is never a catalog entry; it flows through `rawMessage` and
- * is rendered unchanged.
+ * 文案键是语义化的，与展示文本相互独立。`en` 目录的键必须与 `zh-CN` 一致
+ * （编译期强制），因此某语言新增或删除一个键，另一语言也要同步修改。
+ * 后端或外部返回的原始文本不进文案目录，而是用 `rawMessage` 包装后原样渲染。
  */
 
 export const SUPPORTED_LANGUAGES = ['zh-CN', 'en'] as const
 export type SupportedLanguage = (typeof SUPPORTED_LANGUAGES)[number]
 export const FALLBACK_LANGUAGE: SupportedLanguage = 'en'
 
-/** Simplified-Chinese source catalog. Its key set defines `TranslationKey`. */
+/** 简体中文源目录。其键集定义了 `TranslationKey`。 */
 const zhCN = {
   'profile.nickname': '昵称',
   'profile.email': '邮箱',
@@ -122,7 +119,7 @@ const zhCN = {
 
 export type TranslationKey = keyof typeof zhCN
 
-/** English catalog. Statically constrained to the zh-CN key set. */
+/** 英文文案目录。它的键必须与 zh-CN 完全一致（编译期强制）。 */
 const en: Record<TranslationKey, string> = {
   'profile.nickname': 'Nickname',
   'profile.email': 'Email',
@@ -232,20 +229,20 @@ const en: Record<TranslationKey, string> = {
   'time.daysAgo': '{n} days ago',
 }
 
-/** Native language labels shown inside the language menu (same in both locales). */
+/** 语言菜单中显示的语言名称（两种语言下写法相同）。 */
 export const LANGUAGE_LABELS: Record<SupportedLanguage, string> = {
   'zh-CN': zhCN['lang.zhCN'],
   en: zhCN['lang.en'],
 }
 
-/** Returns the catalog key set for a locale (used to assert parity at runtime). */
+/** 返回某语言的文案键集合（运行时用来核对两套键是否一致）。 */
 export function catalogKeys(
   lang: SupportedLanguage,
 ): readonly TranslationKey[] {
   return Object.keys(lang === 'zh-CN' ? zhCN : en) as TranslationKey[]
 }
 
-/** Reports whether the value is exactly one of the supported language tags. */
+/** 报告值是否正好是受支持的语言标签之一。 */
 export function isSupportedLanguage(
   value: unknown,
 ): value is SupportedLanguage {
@@ -253,8 +250,8 @@ export function isSupportedLanguage(
 }
 
 /**
- * Normalizes a browser language tag into a supported language. Any `zh-*`
- * becomes `zh-CN`, any `en-*` becomes `en`; unsupported tags yield null.
+ * 将浏览器语言标签规范化为受支持语言。
+ * 任何 `zh-*` 变成 `zh-CN`，任何 `en-*` 变成 `en`；不支持的标签返回 null。
  */
 export function normalizeLanguage(
   value: string | null | undefined,
@@ -267,8 +264,8 @@ export function normalizeLanguage(
 }
 
 /**
- * Resolves the active language: a valid stored preference wins, then the
- * browser language list is inspected in order, and `en` is the final fallback.
+ * 解析当前语言：有效的已存偏好优先，然后按顺序检查浏览器语言列表，
+ * 最后回退到 `en`。
  */
 export function resolveLanguage(
   stored: string | null | undefined,
@@ -283,8 +280,8 @@ export function resolveLanguage(
 }
 
 /**
- * Translates a key in the active locale, interpolating `{name}` placeholders.
- * Unresolved keys fall back to the key itself so a drift never blanks the UI.
+ * 在目标语言中翻译文案键，并替换其中的 `{name}` 占位符。
+ * 未找到的键直接显示键名本身，避免因缺少译文导致界面空白。
  */
 export function translate(
   lang: SupportedLanguage,
@@ -302,8 +299,8 @@ export function translate(
 }
 
 /**
- * Formats a timestamp as relative time (<7 days) or a locale-specific date
- * (>=7 days). Invalid timestamps are returned unchanged.
+ * 将时间戳格式化为相对时间（<7 天）或语言相关的日期（>=7 天）。
+ * 无效时间戳原样返回。
  */
 export function formatRelativeTime(
   isoString: string,
@@ -329,10 +326,10 @@ export function formatRelativeTime(
 }
 
 /**
- * A display message that can survive a render: local translation keys are
- * retranslated on a language change while opaque raw text stays untouched.
- * `prefix` composes a local prefix (e.g. "Logout failed: ") with a raw or
- * local message without materializing the result at event time.
+ * 一种可以跨多次渲染保存的展示消息：本地翻译键在切换语言时重新翻译，
+ * 不参与翻译的原始文本则原样保留。
+ * `prefix` 把本地前缀（如“退出登录失败：”）与另一条消息组合起来，
+ * 不在事件发生时立刻拼出完整文本。
  */
 export type DisplayMessage =
   | {
@@ -343,7 +340,7 @@ export type DisplayMessage =
   | { kind: 'raw'; text: string }
   | { kind: 'prefix'; prefix: TranslationKey; message: DisplayMessage }
 
-/** Builds a locale-renderable message from a catalog key. */
+/** 根据文案键构建一条消息，渲染时按当前语言翻译。 */
 export function localMessage(
   key: TranslationKey,
   params?: Record<string, string | number>,
@@ -351,12 +348,12 @@ export function localMessage(
   return { kind: 'local', key, params }
 }
 
-/** Builds an opaque raw message (backend/external text) rendered unchanged. */
+/** 构建一条原样渲染的不透明原始消息（后端/外部文本）。 */
 export function rawMessage(text: string): DisplayMessage {
   return { kind: 'raw', text }
 }
 
-/** Builds a local-prefix + inner message composition. */
+/** 将一条本地前缀与另一条消息组合。 */
 export function prefixMessage(
   prefix: TranslationKey,
   message: DisplayMessage,
@@ -364,7 +361,7 @@ export function prefixMessage(
   return { kind: 'prefix', prefix, message }
 }
 
-/** Renders a display message into the active locale at render time. */
+/** 渲染时把消息翻译成当前语言。 */
 export function renderMessage(
   message: DisplayMessage | null | undefined,
   lang: SupportedLanguage,

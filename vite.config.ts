@@ -7,11 +7,10 @@ export const sharedConfig = defineConfig({
   plugins: [tailwindcss()],
 })
 
-// The widget builds to standalone browser ES modules under widget/dist, which
-// deployments upload to their own CDN and reference via the embed <script>
-// tag (or the widget's service-origin attribute). The unminified build runs
-// first and clears dist; the minified build then writes alongside it.
-// Generated artifacts are git-ignored (see .gitignore).
+// widget 构建为 widget/dist 下的独立浏览器 ES 模块，部署方上传到自己的 CDN 并通过
+// embed <script> 标签（或 widget 的 service-origin 属性）引用。
+// 非压缩构建先运行并清空 dist；压缩构建随后写在同一目录下。
+// 生成的产物已被 git 忽略（见 .gitignore）。
 export default defineConfig(({ mode }) => {
   const minified = mode === 'minified'
 

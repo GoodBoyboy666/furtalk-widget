@@ -1,7 +1,7 @@
 /**
- * Widget state machine (reducer).
+ * Widget 状态机（reducer）。
  *
- * Explicit status transitions instead of scattered flags:
+ * 用显式的状态迁移替代零散的标志位：
  *
  *   boot -> loading-config -> loading-thread -> ready
  *                                   |           |
@@ -13,13 +13,12 @@
  *                                              v
  *                                    creating/deleting -> ready
  *
- * The popup authorization flow adds an `authPhase` facet (opening / waiting /
- * exchanging / cancelled / blocked / closed / expired / unsupported) so the UI
- * can render explicit recoverable states without losing the thread view. A
- * `pendingAction` records what to perform after a widget session is
- * established; it covers authenticated-mode creates/deletes and the anonymous
- * administrator-email `need_auth_code` retry, which share the same
- * popup -> exchange -> probe path.
+ * 弹窗授权流程新增 `authPhase` 维度（opening / waiting / exchanging /
+ * cancelled / blocked / closed / expired / unsupported），使 UI 在保留线程视图的
+ * 同时展示明确的可恢复状态。
+ * `pendingAction` 记录 widget 会话建立后要执行的动作：认证模式的创建/删除，
+ * 以及匿名模式下管理员邮箱触发的 `need_auth_code` 重试，
+ * 两者共用同一条 popup -> exchange -> probe 流程。
  */
 
 import { mergeComments } from './comments'
@@ -57,7 +56,7 @@ export type AuthPhase =
   | 'expired'
   | 'unsupported'
 
-/** An action to perform after a widget session is established. */
+/** widget 会话建立后要执行的动作。 */
 export type PendingAction =
   | { type: 'create'; parentId?: string; body: string; captchaToken: string }
   | { type: 'delete'; commentId: string }
@@ -69,7 +68,7 @@ export interface WidgetState {
   thread?: ThreadResponse
   comments: Comment[]
   nextCursor: string | null
-  /** Active thread ordering; a cursor is only meaningful with this ordering. */
+  /** 当前线程排序；游标仅对该排序有意义。 */
   sort: CommentSort
   session?: WidgetSession
   loadingMore: boolean
@@ -78,17 +77,16 @@ export interface WidgetState {
   authPhase: AuthPhase
   pendingAction?: PendingAction
   /**
-   * Success notice shown after a comment submission (never on failure).
-   * Stored as a render-time display descriptor so a language change can
-   * retranslate it; raw backend details stay opaque.
+   * 评论提交后显示的成功提示（失败时不显示）。
+   * 保存为展示用描述，切换语言时可以重新翻译；后端返回的原始细节保持原样。
    */
   notice?: DisplayMessage
   /**
-   * Comment ids with an in-flight Like mutation. Repeat clicks on the same
-   * comment are suppressed without blocking unrelated comment actions.
+   * 正在执行点赞/取消赞操作的评论 id。同一评论上的重复点击会被忽略，
+   * 且不影响其他评论的操作。
    */
   pendingLikeIds: Record<string, boolean>
-  /** Comment ids with an in-flight pin/unpin mutation. */
+  /** 正在置顶/取消置顶的评论 id。 */
   pendingPinIds?: Record<string, boolean>
 }
 
@@ -147,8 +145,8 @@ export function widgetReducer(
     case 'config/loading':
       return { ...state, status: 'loading-config', error: undefined }
     case 'config/loaded':
-      // The runtime config owns the default ordering; older backends omit
-      // `comment_sort` and the compatibility default is asc.
+      // 默认排序来自运行时配置；旧版后端不返回 `comment_sort` 时，
+      // 按兼容默认值 asc 处理。
       return {
         ...state,
         status: 'loading-thread',
@@ -186,9 +184,8 @@ export function widgetReducer(
     }
     case 'sort/change': {
       if (state.sort === action.sort) return state
-      // A cursor is only valid for the ordering that produced it: switching
-      // discards the old cursor, visible comments, and any in-flight Like
-      // bookkeeping, then reloads the first page along the new ordering.
+      // 游标只对产生它的排序有效：切换排序会丢弃旧游标、可见评论以及
+      // 任何进行中的点赞操作，然后按新排序重新加载首页。
       return {
         ...state,
         sort: action.sort,
@@ -241,8 +238,7 @@ export function widgetReducer(
     case 'pending/clear':
       return { ...state, pendingAction: undefined }
     case 'create/pending':
-      // A new submission invalidates any previous success notice so stale
-      // feedback can never be attributed to the in-flight request.
+      // 新的提交会使之前的成功提示失效，避免将过时反馈归因到本次请求。
       return {
         ...state,
         status: 'creating',
@@ -330,9 +326,8 @@ export function widgetReducer(
 }
 
 /**
- * Normalizes a runtime-config sort value into a controlled widget sort.
- * Pre-rollout backends omit `comment_sort` and unknown values fall back to
- * the compatibility default `asc`.
+ * 把运行时配置中的排序值规范化为 widget 使用的排序。
+ * 旧版后端不返回 `comment_sort`，未知值则按兼容默认值 `asc` 处理。
  */
 export function normalizeConfigSort(value?: string): CommentSort {
   if (value === 'desc' || value === 'hot') return value

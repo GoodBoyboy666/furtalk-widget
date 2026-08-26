@@ -23,9 +23,8 @@ describe('isAuthorizationMessage', () => {
   })
 
   it('ignores legacy nickname/website fields on init messages', () => {
-    // The authorization protocol no longer transports nickname/website; a
-    // legacy widget payload still decodes because the schema only reads the
-    // fields it owns (request_id and optional email).
+    // 授权协议不再传输昵称/网站；旧 widget 载荷仍可解码，因为协议只读取自己定义的
+    // 字段（request_id 与可选 email）。
     expect(
       isAuthorizationMessage({
         type: 'furtalk:authorization-init',

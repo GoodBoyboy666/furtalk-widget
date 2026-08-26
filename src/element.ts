@@ -1,30 +1,25 @@
 /**
- * <furtalk-comments> custom element.
+ * <furtalk-comments> 自定义元素。
  *
- * Framework-independent, style-isolated via Shadow DOM. Boots by loading the
- * widget runtime config, the current thread, and the widget session, then
- * renders the discussion with root/reply composers, profile editing, CAPTCHA
- * rendering, popup authorization (authenticated sessions and the anonymous
- * administrator-email retry), owner delete, and every recoverable state.
+ * 与框架无关，通过 Shadow DOM 实现样式隔离。启动时依次加载 widget 运行时配置、
+ * 当前线程与 widget 会话，然后渲染讨论区，包含根/回复编辑器、资料编辑、
+ * CAPTCHA 渲染、弹窗授权（认证会话与匿名的管理员邮箱重试）、作者删除以及
+ * 各种可恢复状态的处理。
  *
- * Anonymous mode is an untrusted attribution model: ordinary visitors submit
- * one create request carrying email/nickname/website plus the comment CAPTCHA,
- * with no session establishment, profile PATCH or preflight. An administrator
- * email without a valid widget credential receives `need_auth_code` from the
- * create endpoint, which runs the first-party popup -> exchange -> probe flow
- * and retries the same comment.
+ * 匿名模式是一种不可信归因模型：普通访客仅提交一条携带 email/nickname/网站及
+ * 评论验证码的创建请求，整个过程不需要会话、资料更新或预检。
+ * 没有有效 widget 凭据的管理员邮箱会从创建端点收到 `need_auth_code`，
+ * 该分支运行第一方 popup -> exchange -> probe 流程并重试同一评论。
  *
- * All cross-origin calls use credentials: "include" so the partitioned CHIPS
- * cookie is sent. The server's CORS and live origin authorization remain
- * authoritative; runtime-config CAPTCHA data is a render hint only.
+ * 所有跨域调用都使用 credentials: "include"，以便发送分区 CHIPS cookie。
+ * 以服务端的 CORS 与实时源授权为准；运行时配置中的 CAPTCHA 数据仅是渲染提示。
  */
 
 import { LitElement, html, nothing, unsafeCSS, type TemplateResult } from 'lit'
 import { unsafeHTML } from 'lit/directives/unsafe-html.js'
 
-// The widget stylesheet is compiled by Tailwind during the Vite build and
-// imported as a trusted string via the ?inline query. Lit adopts it inside the
-// component's Shadow DOM; no page-level <style> is injected.
+// Widget 样式表由 Tailwind 在 Vite 构建期间编译，并通过 ?inline 查询以可信字符串形式导入。
+// Lit 在组件的 Shadow DOM 内采用它；不会注入页面级 <style>。
 import widgetCss from './styles.css?inline'
 
 import { ApiClient, WIDGET_PAGE_SIZE } from './api'
@@ -82,7 +77,7 @@ import type {
 
 export { formatRelativeTime } from './i18n'
 
-/** Derives the Furtalk service origin from the script URL (import.meta.url). */
+/** 从脚本 URL (import.meta.url) 推导 Furtalk 服务源。 */
 export function defaultServiceOrigin(): string {
   try {
     return new URL('.', import.meta.url).origin
@@ -91,16 +86,16 @@ export function defaultServiceOrigin(): string {
   }
 }
 
-/** Per-composer CAPTCHA token for the unified `comment` action. */
+/** 统一 `comment` 动作中每个编辑器各自的 CAPTCHA 令牌。 */
 interface ComposerTokens {
   comment: string
 }
 
 interface ComposerState extends ComposerTokens {
   body: string
-  /** Render-time display descriptor; `''` means no error is shown. */
+  /** 用于展示的提示信息；`''` 表示不显示错误。 */
   error: DisplayMessage | ''
-  /** Non-null when this is the reply composer for a specific comment. */
+  /** 回复目标评论的 id；仅当该编辑器用于回复某条评论时非空（根编辑器为 null）。 */
   replyTargetId: string | null
 }
 
@@ -112,9 +107,8 @@ const emptyComposer = (replyTargetId: string | null = null): ComposerState => ({
 })
 
 /**
- * Narrowing guard for the unified create response: a `200` with
- * `{need_auth_code: true}` means the submitted email maps to an administrator
- * without a valid widget credential, not a created comment.
+ * 统一创建接口返回值的判断：返回 `200` 且带 `{need_auth_code: true}`，
+ * 说明该邮箱对应一位没有有效 widget 凭据的管理员，而不是评论创建成功。
  */
 function isNeedAuthCodeResult(
   result: Comment | { need_auth_code: true },
@@ -145,128 +139,127 @@ const AUTH_NOTICE: Record<
   },
 }
 
-// ---- Static Tailwind presentation constants ---------------------------------
-// Component presentation lives as complete static utility candidates on the
-// rendered elements (see design.md). Constants below only group genuinely
-// repeated foundations; every candidate stays literal and scanner-visible.
+// ---- 静态 Tailwind 展示常量 ----------------------------------------------
+// 组件的样式以完整的 Tailwind 工具类直接写在渲染元素上（见 design.md）。
+// 下面这些常量只把确实重复的基础部分归在一起；每个候选类都保持字面书写、可直接扫描。
 
-/** Profile row: three equal columns that collapse to one narrow column. */
+/** 资料行：三列等宽，窄屏折叠为单列。 */
 const PROFILE_ROW =
   'grid grid-cols-3 [border-bottom:1px_solid_var(--furtalk-border)] [@media(max-width:480px)]:grid-cols-1'
 
-/** Divider between adjacent profile fields (desktop left, narrow top). */
+/** 相邻资料字段之间的分隔线（桌面在左，窄屏在上）。 */
 const FIELD_DIVIDER =
   '[border-left:1px_solid_var(--furtalk-border)] [@media(max-width:480px)]:[border-left:0] [@media(max-width:480px)]:[border-top:1px_solid_var(--furtalk-border)]'
 
-/** Comment actions row (spreads across; stacks vertically when narrow). */
+/** 评论操作行（横向铺开；窄屏时纵向堆叠）。 */
 const ACTIONS_ROW =
   'flex flex-wrap items-center justify-between gap-2 [@media(max-width:480px)]:flex-col [@media(max-width:480px)]:items-stretch [@media(max-width:480px)]:gap-2'
 
-/** Nested comment list for flat replies under a root comment. */
+/** 根评论下面按层级排列的回复列表。 */
 const CHILDREN_LIST =
   'ft-children list-none m-0 mt-3 pl-3.5 [border-left:2px_solid_var(--furtalk-border)] flex flex-col gap-2 [@media(max-width:480px)]:pl-2.5'
 
-/** Natural-height limits for the two independently collapsible regions. */
+/** 两个可独立折叠区域的自然高度上限。 */
 const COMMENT_CONTENT_MAX_HEIGHT = 300
 const COMMENT_CHILDREN_MAX_HEIGHT = 400
 
-/** Complete Tailwind candidates for the collapsed outer region wrappers. */
+/** 折叠后外层区域容器的完整 Tailwind 候选。 */
 const CONTENT_COLLAPSED = 'max-h-[300px] overflow-hidden'
 const CHILDREN_COLLAPSED = 'max-h-[400px] overflow-hidden'
 
-/** Shared button chrome (sizing, focus ring); color/background are per kind. */
+/** 通用按钮骨架（尺寸、焦点环）；颜色/背景按类型区分。 */
 const BASE_BUTTON =
   'border border-solid rounded-(--furtalk-radius) px-3.5 py-1.5 cursor-pointer [font:inherit] text-[13px] font-medium leading-5 transition-all duration-150 disabled:opacity-50 disabled:cursor-default focus-visible:outline-2 focus-visible:outline-(--furtalk-accent) focus-visible:outline-offset-1'
 
-/** Default button: bordered, muted background, inherits the theme text. */
+/** 默认按钮：带边框、弱背景，继承主题文本色。 */
 const DEFAULT_BUTTON =
   BASE_BUTTON +
   ' border-(--furtalk-border) bg-(--furtalk-bg) text-(--furtalk-text-muted) hover:text-(--furtalk-text) hover:bg-(--furtalk-bg-muted) active:scale-[0.98] shadow-2xs'
 
-/** Shared presentation for the one-way expansion control. */
+/** 单向展开控件的通用展示。 */
 const READ_MORE_BUTTON =
   DEFAULT_BUTTON +
   ' ft-read-more mt-2 text-(--furtalk-accent) border-(--furtalk-border) bg-(--furtalk-bg) hover:bg-(--furtalk-bg-muted)'
 
-/** Keeps the subtree control aligned with the existing flattened reply list. */
+/** 让子树的展开按钮与现有平铺回复列表对齐。 */
 const CHILDREN_READ_MORE_OFFSET = 'ml-11 [@media(max-width:480px)]:ml-0'
 
-/** Primary action button: accent fill with white text. */
+/** 主要操作按钮：强调色填充配白色文本。 */
 const PRIMARY_BUTTON =
   BASE_BUTTON +
   ' border-(--furtalk-accent) bg-(--furtalk-accent) text-white hover:bg-(--furtalk-accent)/90 active:scale-[0.98] shadow-2xs'
 
-/** Borderless/transparent chrome for ghost buttons. */
+/** 幽灵按钮的无边框/透明外观。 */
 const GHOST_BUTTON =
   'border-0 bg-transparent rounded-(--furtalk-radius) cursor-pointer [font:inherit] font-medium transition-all duration-150 disabled:opacity-50 disabled:cursor-default focus-visible:outline-2 focus-visible:outline-(--furtalk-accent) focus-visible:outline-offset-1'
 
-/** Danger chrome (red text, no border); sizing is added per context. */
+/** 危险外观（红字、无边框）；尺寸按上下文另行追加。 */
 const DANGER_CHROME =
   'border-0 bg-transparent text-(--furtalk-danger) rounded-(--furtalk-radius) cursor-pointer [font:inherit] font-medium transition-all duration-150 disabled:opacity-50 disabled:cursor-default enabled:hover:bg-(--furtalk-bg-muted) focus-visible:outline-2 focus-visible:outline-(--furtalk-accent) focus-visible:outline-offset-1'
 
-/** Danger button outside the comment actions row (e.g. logout). */
+/** 评论操作行之外的危险按钮（如退出登录）。 */
 const DANGER_BUTTON =
   GHOST_BUTTON +
   ' text-(--furtalk-text-muted) text-[13px] px-3 py-1.5 leading-5 enabled:hover:text-(--furtalk-danger) enabled:hover:bg-(--furtalk-bg-muted) active:scale-[0.98]'
 
-/** Danger button inside the comment actions row (compact size). */
+/** 评论操作行内的危险按钮（紧凑尺寸）。 */
 const ACTION_DANGER_BUTTON = DANGER_CHROME + ' text-[12px] px-1.5 py-0.5'
 
-/** Comment list action buttons (回复 / 取消). */
+/** 评论列表操作按钮（回复 / 取消）。 */
 const ACTION_BUTTON =
   GHOST_BUTTON +
   ' text-(--furtalk-text-muted) text-[12px] px-1.5 py-0.5 rounded-md enabled:hover:bg-(--furtalk-bg-muted) enabled:hover:text-(--furtalk-text)'
 
-/** Sort control buttons within the segmented bar; pressed state gets active tab style. */
+/** 分段栏内的排序控件按钮；按下态套用激活标签样式。 */
 const SORT_BUTTON =
   'border-0 bg-transparent text-(--furtalk-text-muted) text-[12px] leading-4 px-2.5 py-1 rounded-[calc(var(--furtalk-radius)-2px)] cursor-pointer [font:inherit] font-medium transition-all duration-150 hover:text-(--furtalk-text) aria-pressed:bg-(--furtalk-bg) aria-pressed:text-(--furtalk-accent) aria-pressed:font-semibold aria-pressed:shadow-2xs focus-visible:outline-2 focus-visible:outline-(--furtalk-accent) focus-visible:outline-offset-1'
 
-/** Emoji category tab buttons; the selected tab switches to the accent fill. */
+/** 表情分类页签按钮；选中页签切换为强调色填充。 */
 const EMOJI_TAB_BUTTON =
   GHOST_BUTTON +
   ' text-(--furtalk-text-muted) text-[12px] px-2.5 py-[4px] hover:bg-(--furtalk-bg-muted) hover:text-(--furtalk-text) aria-selected:bg-(--furtalk-accent) aria-selected:text-white aria-selected:font-medium'
 
-/** Emoji item buttons. */
+/** 表情条目按钮。 */
 const EMOJI_ITEM_BUTTON =
   'inline-flex items-center justify-start min-h-8 max-w-full px-2 py-1 border-0 bg-transparent text-(--furtalk-text) text-[14px] leading-none whitespace-nowrap cursor-pointer [font:inherit] rounded-md transition-colors hover:bg-(--furtalk-bg)'
 
-/** Emoji picker trigger button. */
+/** 表情选择器触发按钮。 */
 const EMOJI_TRIGGER_BUTTON =
   'inline-flex items-center p-1.5 border-0 bg-transparent text-(--furtalk-text-muted) rounded-(--furtalk-radius) cursor-pointer [font:inherit] transition-colors hover:text-(--furtalk-text) hover:bg-(--furtalk-bg-muted) aria-expanded:text-(--furtalk-accent) aria-expanded:bg-(--furtalk-bg-muted) focus-visible:outline-2 focus-visible:outline-(--furtalk-accent) focus-visible:outline-offset-1'
 
-/** Load-more button. */
+/** 加载更多按钮。 */
 const LOAD_MORE_BUTTON =
   GHOST_BUTTON +
   ' mx-auto text-(--furtalk-text-muted) text-[13px] px-4 py-2 border border-solid border-(--furtalk-border) bg-(--furtalk-bg) hover:text-(--furtalk-text) hover:bg-(--furtalk-bg-muted)'
 
-/** Muted helper copy. */
+/** 弱化辅助说明文字。 */
 const NOTE_TEXT = 'text-(--furtalk-text-muted) text-[13px]'
 
-/** Neutral centered state box (loading / empty). */
+/** 中性居中状态框（加载 / 空态）。 */
 const STATE_TEXT =
   'ft-state px-4 py-8 text-center text-(--furtalk-text-muted) text-[14px]'
 
-/** Error state box (keeps the ft-state hook alongside ft-error). */
+/** 错误状态框（保留 ft-state 与 ft-error 两个类名）。 */
 const STATE_ERROR =
   'ft-state ft-error border border-solid border-[#fecaca] bg-[#fef2f2] text-[#b91c1c] p-3.5 rounded-(--furtalk-radius) text-center text-[14px]'
 
-/** Text inputs and textarea baseline. */
+/** 文本框与 textarea 的基线样式。 */
 const INPUT_TEXT =
   '[font:inherit] border-0 rounded-none px-3 py-2 bg-(--furtalk-bg) text-(--furtalk-text) min-w-0 w-full outline-none focus:outline-none'
 
-/** Root widget surface. */
+/** 根 widget 表面。 */
 const WIDGET_ROOT =
   'ft-widget bg-(--furtalk-bg) rounded-(--furtalk-radius) text-[15px]'
 
-/** Icon-only language trigger beside the optional portal link. */
+/** 入口链接旁只显示图标的语言切换按钮。 */
 const LANG_TRIGGER_BUTTON =
   'ft-lang-trigger inline-flex items-center p-1.5 border-0 bg-transparent text-(--furtalk-text-muted) rounded-(--furtalk-radius) cursor-pointer [font:inherit] transition-colors hover:text-(--furtalk-text) hover:bg-(--furtalk-bg-muted) aria-expanded:text-(--furtalk-accent) aria-expanded:bg-(--furtalk-bg-muted) focus-visible:outline-2 focus-visible:outline-(--furtalk-accent) focus-visible:outline-offset-1'
 
-/** Language menu panel anchored under the trigger. */
+/** 锚定在触发按钮下方的语言菜单面板。 */
 const LANG_MENU =
   'ft-lang-menu absolute right-0 top-full mt-1 z-20 min-w-[8rem] rounded-(--furtalk-radius) p-1 bg-(--furtalk-bg) border border-solid border-(--furtalk-border) shadow-[0_4px_20px_rgba(0,0,0,0.08)]'
 
-/** Radio-style language menu item. */
+/** 单选样式语言菜单项。 */
 const LANG_MENU_ITEM =
   'block w-full text-left px-3 py-1.5 border-0 bg-transparent text-(--furtalk-text) text-[13px] rounded-md cursor-pointer [font:inherit] hover:bg-(--furtalk-bg-muted) aria-checked:text-(--furtalk-accent) aria-checked:font-semibold focus-visible:outline-2 focus-visible:outline-(--furtalk-accent) focus-visible:outline-offset-1'
 
@@ -296,7 +289,7 @@ export class FurtalkCommentsElement extends LitElement {
   private store: ProfileStore | null = null
   private booted = false
 
-  /** Ephemeral per-region presentation state; neither set is persisted. */
+  /** 每个区域临时的展示状态；两组均不持久化。 */
   private overflowingRegions = new Set<string>()
   private expandedRegions = new Set<string>()
   private regionResizeObserver: ResizeObserver | null = null
@@ -305,15 +298,15 @@ export class FurtalkCommentsElement extends LitElement {
 
   private hints: ProfileHints = { email: '', nickname: '', website_url: '' }
 
-  /** Active display language; resolved before the first render. */
+  /** 当前展示语言；在首次渲染前解析。 */
   private language: SupportedLanguage = resolveLanguage(null, [])
 
-  /** Whether the icon-triggered language menu is currently open. */
+  /** 图标触发的语言菜单当前是否打开。 */
   private languageMenuOpen = false
-  /** Removes the document-level outside-click listener while the menu is open. */
+  /** 菜单关闭时用来移除文档级的外部点击监听器。 */
   private languageMenuClose: (() => void) | null = null
 
-  /** Recoverable widget-level notice (logout failures and popup-block fallbacks). */
+  /** widget 级提示，用于展示可恢复的情况（如退出登录失败、弹窗被拦截）。 */
   private widgetNotice: {
     text: DisplayMessage
     reopenLogout?: boolean
@@ -325,28 +318,28 @@ export class FurtalkCommentsElement extends LitElement {
 
   private captchaHandles = new Map<string, CaptchaHandle>()
   private captchaMounted = new Set<string>()
-  /** Keys whose required CAPTCHA could not be rendered; do not retry in a loop. */
+  /** 无法渲染必需验证码的编辑器；不要在循环里重试。 */
   private captchaFailed = new Set<string>()
-  /** Composer key ('root' | 'reply') whose CAPTCHA mask is currently open. */
+  /** 当前 CAPTCHA 掩膜所属的编辑器键（'root' | 'reply'）。 */
   private captchaMaskKey: 'root' | 'reply' | null = null
-  /** Previous mask key, used to restore focus to the triggering composer. */
+  /** 上一个掩膜键，用于把焦点还给触发编辑器。 */
   private lastMaskKey: 'root' | 'reply' | null = null
-  /** One-shot resume of the pending composer action after the mask solves. */
+  /** 掩膜验证通过后一次性恢复挂起的编辑器动作。 */
   private pendingMaskedSubmit: (() => void) | null = null
 
-  /** Remote emoji-pack catalog used by the picker; empty until configured. */
+  /** 选择器使用的远程表情包目录；配置前为空。 */
   private emojiCatalog: EmojiCatalog | null = null
-  /** Catalog load state; failures never block commenting. */
+  /** 目录加载状态；失败从不阻塞评论。 */
   private emojiState: 'idle' | 'loading' | 'ready' | 'error' = 'idle'
-  /** Emoji panel currently open; one panel at a time. */
+  /** 当前打开的表情面板；同时只开一个。 */
   private emojiOpenKey: 'root' | 'reply' | null = null
-  /** Previous open key, used to restore focus to the triggering composer. */
+  /** 上一个打开键，用于把焦点还给触发编辑器。 */
   private lastEmojiOpenKey: 'root' | 'reply' | null = null
-  /** Active category tab id within the emoji panel. */
+  /** 表情面板内当前激活的分类页签 id。 */
   private emojiActiveTab = ''
-  /** Pending catalog load identity; stale completions are ignored. */
+  /** 挂起目录加载的标识；过期完成会被忽略。 */
   private emojiLoadToken = 0
-  /** Aborts the in-flight catalog request on reboot/retry/disconnect. */
+  /** 在重启/重试/断开时中止进行中的目录请求。 */
   private emojiAbort: AbortController | null = null
 
   override connectedCallback(): void {
@@ -372,7 +365,7 @@ export class FurtalkCommentsElement extends LitElement {
       try {
         handle.reset()
       } catch {
-        // Best-effort teardown.
+        // 尽力清理，失败可忽略。
       }
     }
     this.captchaHandles.clear()
@@ -388,11 +381,10 @@ export class FurtalkCommentsElement extends LitElement {
     this.emojiAbort = null
   }
 
-  /** Boots the widget: resolve language, parse config, load runtime config, thread and session. */
+  /** 启动 widget：解析语言、解析配置、加载运行时配置、线程与会话。 */
   boot(): void {
-    // The initial locale is resolved before the first scheduled render so the
-    // widget root carries the correct `lang` and every copy renders localized.
-    // A stored preference wins, then the browser language list, then `en`.
+    // 首次渲染前解析初始语言，使 widget 根元素携带正确的 `lang` 属性，所有文案按所选语言渲染。
+    // 已存偏好优先，其次浏览器语言列表，最后 `en`。
     this.language = resolveLanguage(loadLanguage(), navigator.languages)
     this.state = initialState
     this.overflowingRegions.clear()
@@ -444,7 +436,7 @@ export class FurtalkCommentsElement extends LitElement {
     void this.load()
   }
 
-  /** Loads runtime config then the first thread page. Exposed for retry. */
+  /** 加载运行时配置，然后加载线程首页。供重试使用。 */
   async load(): Promise<void> {
     if (!this.api || !this.config) return
     this.state = widgetReducer(this.state, { type: 'config/loading' })
@@ -461,9 +453,9 @@ export class FurtalkCommentsElement extends LitElement {
     }
   }
 
-  // startEmojiLoad 在运行时配置可用后独立启动远程表情目录加载。
-  // 未配置 URL 时保持空目录（触发器隐藏）；失败不进入全局 fail 路径，
-  // 错误只在选择器内提示并可重试。
+  // startEmojiLoad 在运行时配置就绪后，单独启动远程表情目录的加载。
+  // 未配置 URL 时保持空目录（不显示触发按钮）；
+  // 加载失败不进入全局错误处理，只在表情面板内提示并允许重试。
   private startEmojiLoad(config: RuntimeConfig): void {
     const url = (config.emoji_catalog_url ?? '').trim()
     if (url === '') {
@@ -494,7 +486,7 @@ export class FurtalkCommentsElement extends LitElement {
       this.requestUpdate()
     } catch {
       if (token !== this.emojiLoadToken) return
-      // 目录失败非致命：保留空目录并展示重试，评论工作流不受影响。
+      // 目录加载失败不影响评论：保留空目录并展示重试，评论流程不受影响。
       this.emojiState = 'error'
       this.requestUpdate()
     }
@@ -512,7 +504,7 @@ export class FurtalkCommentsElement extends LitElement {
     this.requestUpdate()
   }
 
-  /** Loads one cursor page (first page when cursor is null). */
+  /** 加载一个游标页（cursor 为 null 时为首页）。 */
   async loadPage(cursor?: string): Promise<void> {
     if (!this.api || !this.config) return
     if (cursor) {
@@ -536,7 +528,7 @@ export class FurtalkCommentsElement extends LitElement {
       this.requestUpdate()
     } catch (error) {
       if (cursor) {
-        // A failed load-more keeps the visible thread; just stop the spinner.
+        // 加载更多失败时保留当前评论，只停掉加载动画。
         this.state = { ...this.state, loadingMore: false }
       } else {
         this.fail(error)
@@ -546,11 +538,9 @@ export class FurtalkCommentsElement extends LitElement {
   }
 
   /**
-   * Switches the thread ordering. A change discards the old cursor and
-   * comments (via the `sort/change` reducer action) and reloads the first
-   * page along the new ordering; subsequent load-more pages reuse the same
-   * ordering. This is a per-instance temporary preference and never writes
-   * the admin-configured default.
+   * 切换线程排序。切换会丢弃旧游标与已加载的评论（通过 `sort/change` 动作），
+   * 再按新排序重新加载首页；之后的加载更多沿用同一排序。
+   * 这只是本次实例的临时偏好，不会改动管理员配置的默认值。
    */
   private changeSort(sort: CommentSort): void {
     if (this.state.sort === sort) return
@@ -560,9 +550,9 @@ export class FurtalkCommentsElement extends LitElement {
   }
 
   /**
-   * Probes the widget session. Exposed for retry and after exchange. Returns
-   * whether the probe request itself succeeded so fresh-session establishment
-   * can treat a probe failure as authoritative (never reuse stale state).
+   * 探测 widget 会话，重试和授权交换之后都会调用。
+   * 返回探测请求本身是否成功，以便建立新会话时把探测失败当作最终结果，
+   * 绝不复用旧状态。
    */
   async probeSession(): Promise<boolean> {
     if (!this.api) return false
@@ -575,8 +565,7 @@ export class FurtalkCommentsElement extends LitElement {
       this.requestUpdate()
       return true
     } catch {
-      // Session probing is best-effort for the general load path; write flows
-      // that establish fresh credentials must use the boolean result.
+      // 普通加载流程里的会话探测只作为参考；建立新凭据的写入流程必须使用返回的布尔结果。
       return false
     }
   }
@@ -619,7 +608,7 @@ export class FurtalkCommentsElement extends LitElement {
     return validateProfileHints(this.hints)
   }
 
-  /** Translates a key in the active locale. */
+  /** 把文案键翻译成当前语言。 */
   private t(
     key: TranslationKey,
     params?: Record<string, string | number>,
@@ -627,13 +616,13 @@ export class FurtalkCommentsElement extends LitElement {
     return translate(this.language, key, params)
   }
 
-  // ---- Language menu ------------------------------------------------------
+  // ---- 语言菜单 ----------------------------------------------------
 
   private toggleLanguageMenu(): void {
     this.setLanguageMenu(!this.languageMenuOpen)
   }
 
-  /** Opens or closes the language menu, wiring outside-click and focus. */
+  /** 打开或关闭语言菜单，并处理好外部点击与焦点。 */
   private setLanguageMenu(open: boolean): void {
     if (open === this.languageMenuOpen) return
     this.languageMenuOpen = open
@@ -642,11 +631,9 @@ export class FurtalkCommentsElement extends LitElement {
       const onPointerDown = (event: MouseEvent) => {
         const target = event.target as Node | null
         const control = this.renderRoot?.querySelector('.ft-lang')
-        // Events dispatched inside this component's shadow root are retargeted
-        // to the custom-element host when they reach document. Inspect the
-        // composed path so a language-item press still counts as inside the
-        // control; keep the target/contains fallback for non-composed events
-        // and older event implementations.
+        // 本组件 Shadow root 内派发的事件到达 document 时会被重定向到自定义元素宿主，
+        // 因此检查 composed path，将语言项的点击仍判定为控件内部；
+        // 对不冒泡的事件和旧的事件实现，以 target/contains 判断作为回退。
         const path = event.composedPath()
         const isInside = control
           ? path.length > 0
@@ -705,7 +692,7 @@ export class FurtalkCommentsElement extends LitElement {
     this.focusLanguageTrigger()
   }
 
-  // ---- Profile -----------------------------------------------------------
+  // ---- 资料 ---------------------------------------------------------
 
   private saveProfile(): void {
     const normalized = this.normalizedHints
@@ -719,7 +706,7 @@ export class FurtalkCommentsElement extends LitElement {
     this.requestUpdate()
   }
 
-  // ---- CAPTCHA -----------------------------------------------------------
+  // ---- CAPTCHA -------------------------------------------------------
 
   private commentCaptchaProjection(): CaptchaProjection | undefined {
     return this.state.config?.captcha?.comment
@@ -729,12 +716,12 @@ export class FurtalkCommentsElement extends LitElement {
     return Boolean(this.commentCaptchaProjection()?.required)
   }
 
-  /** Stable CAPTCHA host key per composer (only the `comment` action exists). */
+  /** 每个编辑器固定的验证码容器标识（目前只有 `comment` 一种动作）。 */
   private composerKey(composer: ComposerState | null): 'root' | 'reply' {
     return composer?.replyTargetId ? 'reply' : 'root'
   }
 
-  /** Mounts CAPTCHA widgets into their stable hosts after a render. */
+  /** 渲染后把验证码组件挂载到各自的容器里。 */
   private syncCaptchas(): void {
     const root = this.renderRoot
     if (!root) return
@@ -754,7 +741,7 @@ export class FurtalkCommentsElement extends LitElement {
       this.captchaMounted.add(key)
       void this.mountOneCaptcha(key, host, composer)
     }
-    // Tear down hosts that are no longer rendered (mounted or failed).
+    // 清理不再渲染的容器（包括已挂载和已失败的）。
     for (const key of [...this.captchaMounted, ...this.captchaFailed]) {
       if (!seen.has(key)) this.teardownCaptcha(key)
     }
@@ -769,11 +756,11 @@ export class FurtalkCommentsElement extends LitElement {
       try {
         handle.reset()
       } catch {
-        // Ignore reset failures during teardown.
+        // 忽略清理期间的重置失败。
       }
       this.captchaHandles.delete(key)
     }
-    // 清空宿主容器，避免同一容器内重复渲染 provider 组件。
+    // 清空容器，避免在同一容器里重复渲染验证码组件。
     const host = this.renderRoot?.querySelector<HTMLElement>(
       `[data-captcha-host="${key}"]`,
     )
@@ -792,7 +779,7 @@ export class FurtalkCommentsElement extends LitElement {
     }
     const handle = await mountCaptcha(container, projection, (token) => {
       if (composer) composer.comment = token
-      // 掩膜内解决：写入 token 后恢复挂起的提交恰好一次。
+      // 掩膜内完成验证：写入 token 后，挂起的提交只恢复执行一次。
       if (token && this.captchaMaskKey === key) {
         this.resumeMaskedSubmit()
         return
@@ -804,9 +791,8 @@ export class FurtalkCommentsElement extends LitElement {
     } else {
       this.captchaMounted.delete(key)
       if (projection.required && composer) {
-        // The policy requires CAPTCHA but no renderable provider is
-        // configured (or the provider script failed to load). The server
-        // stays authoritative; show a recoverable error inside the mask.
+        // 策略要求验证码，但没有可用的验证码服务（或脚本加载失败）。
+        // 最终以服务端为准；在掩膜内展示可恢复的错误。
         this.captchaFailed.add(key)
         composer.error = localMessage('validate.captchaUnavailable')
         this.requestUpdate()
@@ -814,12 +800,11 @@ export class FurtalkCommentsElement extends LitElement {
     }
   }
 
-  // ---- CAPTCHA mask -------------------------------------------------------
+  // ---- CAPTCHA 掩膜 ---------------------------------------------
 
   /**
-   * Opens the in-Shadow-DOM CAPTCHA mask for a composer and stores a one-shot
-   * resume callback. The pending submit runs only after a non-empty token
-   * arrives; cancel, reply close, and failure paths drop the callback.
+   * 为某个编辑器打开 Shadow DOM 内的验证码掩膜，并保存一次性恢复回调。
+   * 挂起的提交只在收到非空 token 后执行；取消、关闭回复与失败都会丢弃该回调。
    */
   private openCaptchaMask(key: 'root' | 'reply', resume: () => void): void {
     this.captchaFailed.delete(key)
@@ -828,7 +813,7 @@ export class FurtalkCommentsElement extends LitElement {
     this.requestUpdate()
   }
 
-  /** Consumes and runs the stored pending submit once, then closes the mask. */
+  /** 把保存的挂起提交执行一次，然后关闭掩膜。 */
   private resumeMaskedSubmit(): void {
     const resume = this.pendingMaskedSubmit
     this.pendingMaskedSubmit = null
@@ -837,7 +822,7 @@ export class FurtalkCommentsElement extends LitElement {
     resume?.()
   }
 
-  /** Cancels the open mask: drops the pending submit and tears down its host. */
+  /** 取消打开的掩膜：丢弃挂起的提交，并清理验证码容器。 */
   private cancelCaptchaMask(): void {
     if (!this.captchaMaskKey) return
     const key = this.captchaMaskKey
@@ -847,9 +832,9 @@ export class FurtalkCommentsElement extends LitElement {
     this.requestUpdate()
   }
 
-  // ---- Long-region measurement ------------------------------------------
+  // ---- 长区域测量 --------------------------------------------------
 
-  /** Installs event-driven measurement fallbacks for browsers without RO. */
+  /** 给不支持 ResizeObserver 的浏览器提供基于事件的测量方案。 */
   private setupRegionMeasurementFallback(): void {
     if (this.regionFallbackCleanup) return
 
@@ -860,9 +845,8 @@ export class FurtalkCommentsElement extends LitElement {
       this.syncLimitedRegions()
     }
 
-    // `load` does not bubble from images, so listen in the ShadowRoot capture
-    // phase. This also gives ResizeObserver-enabled browsers a deterministic
-    // correction as soon as a Markdown image has finished loading.
+    // `load` 事件不会从图片冒泡，故在 ShadowRoot 捕获阶段监听，
+    // 使支持 ResizeObserver 的浏览器也能在图片加载完成后重新测量。
     this.renderRoot.addEventListener('load', onResourceLoad, true)
     if (typeof window !== 'undefined') {
       window.addEventListener('resize', onWindowResize)
@@ -904,13 +888,13 @@ export class FurtalkCommentsElement extends LitElement {
     return { kind, commentId }
   }
 
-  /** Returns natural content height, independent of any outer max-height. */
+  /** 返回自然内容高度，与任何外部 max-height 无关。 */
   private naturalRegionHeight(target: HTMLElement): number {
     const rectHeight = target.getBoundingClientRect().height
     return Math.max(target.scrollHeight, target.offsetHeight, rectHeight)
   }
 
-  /** Applies one overflow decision and reports whether the set changed. */
+  /** 做一次溢出判断，并返回判断结果是否有变化。 */
   private updateRegionOverflow(
     kind: LimitedRegionKind,
     commentId: string,
@@ -928,7 +912,7 @@ export class FurtalkCommentsElement extends LitElement {
     return true
   }
 
-  /** Measures all current regions and synchronizes the single RO instance. */
+  /** 测量当前所有区域，并只用一个 ResizeObserver 实例来监听。 */
   private syncLimitedRegions(): void {
     const targets = [
       ...this.renderRoot.querySelectorAll<HTMLElement>(
@@ -949,8 +933,8 @@ export class FurtalkCommentsElement extends LitElement {
           this.naturalRegionHeight(target),
         ) || changed
     }
-    // An item removed by sorting, deletion, or pagination must not leave an
-    // eligibility bit behind that could affect a later id reuse.
+    // 被排序、删除或分页移除的条目，不能残留溢出标记，
+    // 以免之后同一条评论再次出现时状态错乱。
     for (const key of [...this.overflowingRegions]) {
       if (!seenKeys.has(key)) {
         this.overflowingRegions.delete(key)
@@ -1030,7 +1014,7 @@ export class FurtalkCommentsElement extends LitElement {
     this.requestUpdate()
   }
 
-  /** Shared two-layer renderer for comment bodies and root reply regions. */
+  /** 评论正文和根回复区域共用的折叠渲染方法（外层限高、内层承载内容）。 */
   private renderLimitedRegion(
     kind: LimitedRegionKind,
     commentId: string,
@@ -1076,7 +1060,7 @@ export class FurtalkCommentsElement extends LitElement {
     `
   }
 
-  // ---- Comment creation ---------------------------------------------------
+  // ---- 评论创建 -----------------------------------------------------
 
   private submitRoot(): void {
     if (this.state.status === 'creating' || this.state.status === 'deleting') {
@@ -1111,9 +1095,8 @@ export class FurtalkCommentsElement extends LitElement {
   }
 
   /**
-   * Validates the required attribution fields before any request. Nickname is
-   * required by the unified create contract and the server remains
-   * authoritative, but an empty/invalid value must never silently submit.
+   * 在任何请求发出前校验必填的作者信息。
+   * 统一创建接口要求昵称且以服务端为准，但空值或无效值绝不静默提交。
    */
   private validateAttribution(composer: ComposerState): boolean {
     const hints = this.normalizedHints
@@ -1140,17 +1123,14 @@ export class FurtalkCommentsElement extends LitElement {
       captchaToken: composer.comment,
     }
     if (this.mode === 'anonymous') {
-      // Anonymous mode is a direct one-request submission: ordinary visitors
-      // need no session, no profile PATCH and no preflight. An administrator
-      // email returns need_auth_code from the create endpoint, which routes
-      // through the popup authorization flow and retries the same comment.
+      // 匿名模式是直接的一次请求提交：普通访客不需要会话、资料更新或预检。
+      // 管理员邮箱会从创建端点收到 need_auth_code，转而执行弹窗授权流程并重试同一评论。
       this.saveProfile()
       await this.commentWithCaptchaGate(action, composer)
       return
     }
-    // Authenticated mode: persist login hints locally and ensure a valid
-    // session BEFORE the CAPTCHA challenge, so the mask only appears at the
-    // moment of submission instead of before the authorization popup.
+    // 认证模式：先将登录提示保存到本地，并确保会话在验证码之前有效，
+    // 使掩膜只在提交时出现，而非在授权弹窗之前。
     this.saveProfile()
     if (!this.authenticatedSessionValid) {
       const ok = await this.ensureAuthenticated(action)
@@ -1166,11 +1146,9 @@ export class FurtalkCommentsElement extends LitElement {
   }
 
   /**
-   * The CAPTCHA gate at the moment of submission. When the comment policy is
-   * required and the composer has no token, open the mask and defer the
-   * submit until a token arrives; otherwise submit directly. The resume
-   * callback rebuilds the action with the fresh composer token so the write
-   * always carries a just-solved value.
+   * 提交时的验证码检查。评论策略要求验证码且编辑器尚无 token 时，打开掩膜，
+   * 待 token 就绪后再提交；否则直接提交。
+   * 恢复回调以新 token 重建请求，使请求始终携带刚验证通过的值。
    */
   private async commentWithCaptchaGate(
     action: Extract<PendingAction, { type: 'create' }>,
@@ -1206,7 +1184,7 @@ export class FurtalkCommentsElement extends LitElement {
     }
     await this.probeSession()
     if (!this.authenticatedSessionValid) {
-      // The exchange succeeded but the partitioned cookie did not stick.
+      // 交换成功但分区 cookie 未生效。
       this.state = widgetReducer(this.state, { type: 'auth/unsupported' })
       this.requestUpdate()
       return false
@@ -1219,7 +1197,7 @@ export class FurtalkCommentsElement extends LitElement {
     return true
   }
 
-  /** Opens the authorization popup and records the outcome in the state. */
+  /** 打开授权弹窗并把结果记录到状态中。 */
   private runAuthorization(): Promise<AuthorizationOutcome> {
     if (!this.config) return Promise.resolve({ status: 'blocked' })
     this.state = widgetReducer(this.state, { type: 'auth/opening' })
@@ -1230,8 +1208,7 @@ export class FurtalkCommentsElement extends LitElement {
       hints: this.normalizedHints,
     }).then((outcome) => {
       if (outcome.status === 'success') {
-        // Enter exchanging immediately when the popup reports approval, so the
-        // banner never lingers on "opening" while the code exchange runs.
+        // 弹窗确认批准后立即进入 exchanging，使代码交换期间横幅不会停留在“opening”。
         this.state = widgetReducer(this.state, { type: 'auth/exchanging' })
         this.requestUpdate()
       } else {
@@ -1259,20 +1236,18 @@ export class FurtalkCommentsElement extends LitElement {
       case 'timeout':
         return { type: 'auth/closed' }
       case 'success':
-        // Success is handled by the caller after exchanging the code.
+        // 成功的情况由调用方在交换代码后处理。
         return { type: 'auth/closed' }
     }
   }
 
-  // ---- Two-layer logout ---------------------------------------------------
+  // ---- 双层退出登录 -----------------------------------------------
 
   /**
-   * Logs out of the authenticated widget session and the first-party account.
-   * Both actions start in the same user gesture: the widget session DELETE
-   * clears the CHIPS cookie for this top-level site partition, while a
-   * synchronously opened new tab runs the first-party /logout page. The two
-   * sessions live in different cookie contexts, so their outcomes stay
-   * independent; the widget reflects only its own session result.
+   * 退出认证 widget 会话与第一方账号。两个动作在同一个用户操作中启动：
+   * widget 会话 DELETE 会清除该站点分区的 CHIPS cookie，而同步打开的新标签页
+   * 运行第一方 /logout 页面。
+   * 两个会话处于不同的 cookie 上下文，结果互不影响；widget 只反映自身会话的结果。
    */
   private handleLogout(): void {
     if (this.mode !== 'authenticated' || !this.authenticatedSessionValid) return
@@ -1282,7 +1257,7 @@ export class FurtalkCommentsElement extends LitElement {
     this.openLogoutPage()
   }
 
-  /** Clears the CHIPS widget session and unlocks the profile fields on success. */
+  /** 清除 CHIPS widget 会话，成功后允许编辑资料字段。 */
   private async clearWidgetSession(): Promise<void> {
     if (!this.api) return
     try {
@@ -1302,7 +1277,7 @@ export class FurtalkCommentsElement extends LitElement {
     }
   }
 
-  /** Opens the first-party /logout page in a new tab within the user gesture. */
+  /** 在同一个用户操作中，在新标签页里打开第一方 /logout 页面。 */
   private openLogoutPage(): void {
     const origin = this.config?.serviceOrigin
     if (!origin) return
@@ -1313,8 +1288,8 @@ export class FurtalkCommentsElement extends LitElement {
       opened = false
     }
     if (!opened) {
-      // The widget session is still cleared by its own request; tell the user
-      // the first-party account remains logged in and offer a manual action.
+      // widget 会话仍由自己的请求清除；此时告知用户第一方账号仍处于登录状态，
+      // 并给出手动操作入口。
       this.widgetNotice = {
         text: localMessage('notice.logoutBlocked'),
         reopenLogout: true,
@@ -1354,11 +1329,9 @@ export class FurtalkCommentsElement extends LitElement {
         projection?.required ? action.captchaToken : '',
       )
       if (isNeedAuthCodeResult(created)) {
-        // The email maps to an administrator and no valid widget credential
-        // was attached: run the first-party popup -> exchange -> probe flow,
-        // then retry the exact same comment. The need_auth_code branch runs
-        // before CAPTCHA verification, so the still-unconsumed composer token
-        // is reused for the retry when the policy requires one.
+        // 该邮箱对应管理员但缺少有效的 widget 凭据：先执行第一方
+        // popup -> exchange -> probe 流程，再重试同一条评论。
+        // 该分支发生在验证码校验之前，token 尚未使用，策略要求时可复用。
         this.state = widgetReducer(this.state, { type: 'create/settled' })
         this.state = widgetReducer(this.state, { type: 'pending/set', action })
         this.requestUpdate()
@@ -1374,9 +1347,8 @@ export class FurtalkCommentsElement extends LitElement {
       }
       this.state = widgetReducer(this.state, { type: 'create/settled' })
       this.state = widgetReducer(this.state, { type: 'pending/clear' })
-      // Success copy is derived from the created comment status: pending means
-      // the comment awaits moderation, published means it is live. Any other
-      // status clears stale success feedback (failure never shows success).
+      // 成功文案取决于评论状态：pending 表示等待审核，published 表示已上线。
+      // 其他状态不显示成功提示（失败从不显示成功）。
       const noticeKey = submissionNotice(created.status)
       this.state = widgetReducer(
         this.state,
@@ -1409,9 +1381,8 @@ export class FurtalkCommentsElement extends LitElement {
         widgetError.code === 'unauthorized' &&
         this.mode === 'authenticated'
       ) {
-        // The widget session expired between the probe and the write.
-        // Invalidate it and show a recoverable expired state; the retry
-        // button re-runs the popup authorization then redoes the create.
+        // widget 会话在探测与写入之间过期：将会话标记为失效，并展示可恢复的过期状态；
+        // 重试时重新执行弹窗授权，然后再创建。
         this.handleSessionExpired({
           type: 'create',
           parentId: action.parentId,
@@ -1425,7 +1396,7 @@ export class FurtalkCommentsElement extends LitElement {
     }
   }
 
-  // ---- Deletion -----------------------------------------------------------
+  // ---- 删除 ---------------------------------------------------------
 
   private requestDelete(commentId: string): void {
     if (this.state.status === 'creating' || this.state.status === 'deleting') {
@@ -1435,7 +1406,7 @@ export class FurtalkCommentsElement extends LitElement {
     this.requestUpdate()
   }
 
-  /** Records a recoverable session-expired state for the pending action. */
+  /** 把会话标记为过期，并记录这次要执行的动作，供重试使用。 */
   private handleSessionExpired(action: PendingAction): void {
     this.state = widgetReducer(this.state, {
       type: 'session/probed',
@@ -1480,8 +1451,7 @@ export class FurtalkCommentsElement extends LitElement {
         this.mode === 'authenticated' &&
         widgetError.code === 'unauthorized'
       ) {
-        // Session expired between the probe and the delete: recover via
-        // the popup authorization flow before retrying the delete.
+        // 会话在探测与删除之间过期：先经弹窗授权流程恢复，再重试删除。
         this.handleSessionExpired({ type: 'delete', commentId })
         return
       }
@@ -1489,7 +1459,7 @@ export class FurtalkCommentsElement extends LitElement {
     }
   }
 
-  // ---- Reply composer -------------------------------------------------------
+  // ---- 回复编辑器 ----------------------------------------------------
 
   private openReply(commentId: string): void {
     this.reply = emptyComposer(commentId)
@@ -1504,7 +1474,7 @@ export class FurtalkCommentsElement extends LitElement {
   }
 
   private closeReply(): void {
-    // 关闭回复时若掩膜正对回复打开，先取消掩膜并丢弃 pending 提交。
+    // 关闭回复时若掩膜正对回复打开，先取消掩膜并丢弃挂起的提交。
     if (this.captchaMaskKey === 'reply') {
       this.cancelCaptchaMask()
     }
@@ -1516,7 +1486,7 @@ export class FurtalkCommentsElement extends LitElement {
     this.requestUpdate()
   }
 
-  // ---- Retry from recoverable auth states -----------------------------------
+  // ---- 从可恢复认证状态重试 -------------------------------------
 
   private async retryPending(): Promise<void> {
     const action = this.state.pendingAction
@@ -1526,9 +1496,7 @@ export class FurtalkCommentsElement extends LitElement {
       return
     }
     if (!this.authenticatedSessionValid) {
-      // Every pending write needs a valid authenticated widget session: the
-      // popup -> exchange -> probe flow covers authenticated-mode creates and
-      // deletes as well as the anonymous administrator-email retry.
+      // 每个挂起写入都需要有效的认证 widget 会话：popup -> exchange -> probe 流程既覆盖认证模式的创建/删除，也覆盖匿名的管理员邮箱重试。
       const ok = await this.ensureAuthenticated(action)
       if (!ok) return
     }
@@ -1544,7 +1512,7 @@ export class FurtalkCommentsElement extends LitElement {
       composer.comment = action.captchaToken
       composer.body = action.body
       composer.error = ''
-      // 授权已完成，走到提交前一刻：若策略需要验证码且无 token，先拉起掩膜。
+      // 授权已完成，到达提交前一刻：若策略要求验证码且没有 token，先弹出验证码掩膜。
       await this.commentWithCaptchaGate(action, composer)
     } else if (action.type === 'delete') {
       await this.deleteComment(action.commentId)
@@ -1553,14 +1521,12 @@ export class FurtalkCommentsElement extends LitElement {
     }
   }
 
-  // ---- Like --------------------------------------------------------------
+  // ---- 点赞 ----------------------------------------------------------
 
   /**
-   * Entry point for a Like toggle on a published comment. Repeat clicks on a
-   * comment with an in-flight mutation are suppressed. In anonymous mode only
-   * a valid administrator session may interact (ordinary visitors see the
-   * read-only count). In authenticated mode a missing/expired session starts
-   * the existing authorization popup and resumes exactly this Like.
+   * 已发布评论点赞/取消赞的入口。正在操作中的评论会忽略重复点击。
+   * 匿名模式下只有有效的管理员会话可以交互（普通访客只看到只读计数）。
+   * 认证模式下会话缺失或过期时，会启动现有授权弹窗，授权成功后再继续该点赞。
    */
   private handleLike(commentId: string, like: boolean): void {
     if (!this.api || !this.config) return
@@ -1581,11 +1547,10 @@ export class FurtalkCommentsElement extends LitElement {
   }
 
   /**
-   * Executes one Like add/remove against the authoritative endpoint. On
-   * success the comment's count and viewer state are replaced with the
-   * response; in a Hot view the page is reloaded from page one so the visible
-   * ranking matches the new count. Authentication and request failures keep
-   * the current list and surface the recoverable error.
+   * 对后端接口执行一次点赞或取消赞。
+   * 成功后以接口返回的计数与状态更新评论；最热排序下会从第一页重新加载，
+   * 使可见排序与最新计数一致。
+   * 认证或请求失败时保留当前列表，并展示可恢复的错误。
    */
   private async performLike(commentId: string, like: boolean): Promise<void> {
     if (!this.api || !this.config) return
@@ -1620,8 +1585,7 @@ export class FurtalkCommentsElement extends LitElement {
         this.mode === 'authenticated' &&
         widgetError.code === 'unauthorized'
       ) {
-        // The widget session expired between the probe and the write:
-        // recover via the popup authorization flow before retrying the Like.
+        // widget 会话在探测与写入之间过期：先经弹窗授权流程恢复，再重试点赞。
         this.handleSessionExpired({ type: 'like', commentId, like })
         return
       }
@@ -1632,16 +1596,16 @@ export class FurtalkCommentsElement extends LitElement {
     }
   }
 
-  // ---- Pin ---------------------------------------------------------------
+  // ---- 置顶 ---------------------------------------------------------
 
-  /** Executes a root-comment pin toggle for an already-authorized administrator. */
+  /** 为已授权管理员执行根评论置顶切换。 */
   private handlePin(commentId: string, pinned: boolean): void {
     if (!this.api || !this.config || !this.adminWidgetSessionValid) return
     if (this.state.pendingPinIds?.[commentId]) return
     void this.performPin(commentId, pinned)
   }
 
-  /** Updates the authoritative pin state and reloads the first page afterward. */
+  /** 更新置顶状态（以后端返回为准），随后重新加载首页。 */
   private async performPin(commentId: string, pinned: boolean): Promise<void> {
     if (!this.api || !this.config || !this.adminWidgetSessionValid) return
     if (this.state.pendingPinIds?.[commentId]) return
@@ -1681,7 +1645,7 @@ export class FurtalkCommentsElement extends LitElement {
     }
   }
 
-  // ---- Rendering -------------------------------------------------------------
+  // ---- 渲染 -------------------------------------------------------------
 
   private renderError(error: WidgetError): TemplateResult {
     return html`
@@ -1840,8 +1804,7 @@ export class FurtalkCommentsElement extends LitElement {
     `
   }
 
-  /** Whether a remote emoji-pack catalog URL is configured; the picker is only
-   *  offered when a deployer-supplied catalog is available. */
+  /** 是否配置了远程表情包目录 URL；只有部署方提供了目录，才显示表情选择器。 */
   private get hasEmojiCatalog(): boolean {
     return (this.state.config?.emoji_catalog_url ?? '').trim() !== ''
   }
@@ -2011,9 +1974,9 @@ export class FurtalkCommentsElement extends LitElement {
     `
   }
 
-  // insertEmojiItem 把选中表情插入到所属 composer 的 textarea 当前选区：
-  // 文本项插入原样 content，图片项插入 `:<id>:`；替换选中文本、保留周边
-  // 内容、更新对应草稿并恢复焦点与光标。
+  // insertEmojiItem 把选中的表情插入到所属编辑器的 textarea 当前选区：
+  // 文本项插入原始内容，图片项插入 `:<id>:`；
+  // 替换选中文本、保留周边内容、更新对应草稿并恢复焦点与光标。
   private insertEmojiItem(key: 'root' | 'reply', item: EmojiItem): void {
     const composer = key === 'reply' ? this.reply : this.root
     if (!composer) return
@@ -2088,10 +2051,9 @@ export class FurtalkCommentsElement extends LitElement {
   }
 
   /**
-   * Renders the sort-bar trailing control group: the optional portal link
-   * (admin / my-comments) followed by the always-present language trigger and
-   * its menu. Anonymous ordinary visitors have no portal link but the
-   * language control stays visible.
+   * 渲染排序栏尾部的控件组：可选入口链接（后台 / 我的评论），以及始终可见的
+   * 语言切换按钮和菜单。
+   * 匿名普通访客没有入口链接，但语言控件保持可见。
    */
   private renderTrailingControls(): TemplateResult {
     return html`
@@ -2214,8 +2176,8 @@ export class FurtalkCommentsElement extends LitElement {
   }
 
   // renderCaptchaMask 渲染 Shadow DOM 内的验证码掩膜层。
-  // 掩膜只在某个 composer 需要验证码且没有有效 token 时出现，包含稳定的
-  // 宿主容器、取消按钮与 pending action 文案；掩膜遮挡下方 Widget 交互。
+  // 掩膜只在某个编辑器需要验证码且没有有效 token 时出现，包含固定的验证码容器、
+  // 取消按钮与待执行动作的说明；掩膜会遮挡下方 Widget 的交互。
   private renderCaptchaMask(): TemplateResult | typeof nothing {
     const key = this.captchaMaskKey
     if (!key) return nothing
@@ -2283,11 +2245,10 @@ export class FurtalkCommentsElement extends LitElement {
   }
 
   /**
-   * Renders the Like control for a published comment. The count is always
-   * visible. An interactive button appears in authenticated mode for every
-   * reader; in anonymous mode only a valid administrator session gets the
-   * button, and ordinary visitors see a read-only count. `aria-pressed` plus
-   * an accessible label describe the state without relying on color alone.
+   * 渲染已发布评论的点赞控件。计数始终可见。
+   * 认证模式下每位读者都能看到交互按钮；匿名模式下只有有效的管理员会话有按钮，
+   * 普通访客看到只读计数。
+   * `aria-pressed` 加上无障碍标签描述状态，而不只依赖颜色。
    */
   private renderLikeControl(node: CommentNode, busy: boolean): TemplateResult {
     const likePending = Boolean(this.state.pendingLikeIds[node.id])
@@ -2321,7 +2282,7 @@ export class FurtalkCommentsElement extends LitElement {
     `
   }
 
-  /** Renders the administrator-only pin control for a root comment. */
+  /** 渲染仅管理员可见的根评论置顶控件。 */
   private renderPinControl(
     node: CommentNode,
     busy: boolean,
@@ -2362,9 +2323,10 @@ export class FurtalkCommentsElement extends LitElement {
   ): TemplateResult {
     const deleted = node.status === 'deleted'
     const pending = node.status === 'pending'
-    // 已删除占位文本保持普通转义文本；Markdown 渲染输出只在这里经
-    // unsafeHTML 注入 DOM。renderCommentBody 是唯一输入源：markdown-it 已
-    // 禁用原始 HTML 并限制链接目标，目录图片 token 也只经该边界展开。
+    // 已删除的占位文本保持普通转义文本；只有这里会通过 unsafeHTML
+    // 把 Markdown 渲染结果插入 DOM。
+    // renderCommentBody 是唯一渲染入口：markdown-it 已禁用原始 HTML 并限制链接地址，
+    // 表情目录的图片 token 也只在这里展开。
     const body = deleted
       ? this.t('comment.deleted')
       : unsafeHTML(renderCommentBody(node.body, this.emojiCatalog))
@@ -2611,8 +2573,8 @@ export class FurtalkCommentsElement extends LitElement {
     this.syncLimitedRegions()
   }
 
-  // syncEmojiFocus 在表情面板打开时把焦点移入面板，
-  // 关闭时把焦点还给触发 composer 的 textarea。
+  // syncEmojiFocus 在表情面板打开时把焦点移入面板，关闭时把焦点还给触发
+  // 编辑器的 textarea。
   private syncEmojiFocus(): void {
     const key = this.emojiOpenKey
     if (key === this.lastEmojiOpenKey) return
@@ -2633,7 +2595,7 @@ export class FurtalkCommentsElement extends LitElement {
     }
   }
 
-  // syncMaskFocus 在掩膜打开时把焦点移入面板，关闭时把焦点还给触发 composer。
+  // syncMaskFocus 在掩膜打开时把焦点移入面板，关闭时把焦点还给触发编辑器。
   private syncMaskFocus(): void {
     const key = this.captchaMaskKey
     if (key === this.lastMaskKey) return
@@ -2654,7 +2616,7 @@ export class FurtalkCommentsElement extends LitElement {
     }
   }
 
-  /** Translates a stable configuration-error code into the active locale. */
+  /** 把配置错误代码翻译成当前语言。 */
   private configErrorMessage(): string {
     const error = this.configError
     if (!error) return ''
@@ -2804,7 +2766,7 @@ export class FurtalkCommentsElement extends LitElement {
     `
   }
 
-  /** Builds a render-time display descriptor from an unknown error value. */
+  /** 把未知的错误值转换成用于展示的提示消息。 */
   private composeMessage(error: unknown): DisplayMessage {
     if (error instanceof Error && error.message)
       return rawMessage(error.message)

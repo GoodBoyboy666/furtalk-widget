@@ -1,9 +1,8 @@
 /**
- * Pure selection-replacement helpers for composer insertion.
+ * 编辑器插入时使用的选择区替换辅助函数。
  *
- * The element reads `selectionStart`/`selectionEnd` from the owning textarea,
- * computes the next body and caret position here, updates only that composer's
- * draft, then restores focus and the collapsed selection after a Lit update.
+ * 元素从所属 textarea 读取 `selectionStart`/`selectionEnd`，在此计算出新正文
+ * 与光标位置，只更新该编辑器的草稿，然后在 Lit 更新后恢复焦点与光标位置。
  */
 
 export interface InsertionResult {
@@ -11,7 +10,7 @@ export interface InsertionResult {
   caret: number
 }
 
-/** Replaces [start, end) of `body` with `insertion`, returning the next body. */
+/** 用 `insertion` 替换 `body` 的 [start, end) 区间，返回下一段正文。 */
 export function insertAtSelection(
   body: string,
   start: number,

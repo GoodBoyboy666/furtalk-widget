@@ -31,7 +31,7 @@ function makeHooks(
   const listeners: ((event: MessageEvent) => void)[] = []
   const hooks: AuthorizationFlowHooks = {
     postMessage: (target, message) => {
-      // Simulate the real browser: postMessage against the target popup.
+      // 模拟真实浏览器：向目标弹窗 postMessage。
       popup.messages.push(message)
       popup.targetOrigin.push(targetOrigin)
     },
@@ -130,8 +130,8 @@ describe('runAuthorizationFlow', () => {
       hooks,
     )
 
-    // The default preference is a normal _blank tab: no popup=yes and no
-    // width/height sizing features (browsers may still open a separate window).
+    // 默认偏好是普通 _blank 标签页：不设置 popup=yes，也没有 width/height 等尺寸特性
+    // （浏览器仍可能打开独立窗口）。
     expect(holder.value).not.toBeNull()
     expect(holder.value?.name).toBe('_blank')
     expect(holder.value?.features).toBe('')
@@ -139,7 +139,7 @@ describe('runAuthorizationFlow', () => {
     expect(holder.value?.features).not.toContain('width')
     expect(holder.value?.features).not.toContain('height')
 
-    // The URL handed to window.open must carry the strict protocol fields.
+    // 传给 window.open 的 URL 必须包含严格的协议字段。
     const url = new URL(holder.value?.url ?? '')
     expect(url.pathname).toBe('/authorize')
     expect(url.searchParams.get('site_id')).toBe('123')
@@ -159,8 +159,7 @@ describe('runAuthorizationFlow', () => {
     expect(init?.type === 'furtalk:authorization-init' && init.email).toBe(
       'a@b.example',
     )
-    // Nickname/website are no longer transported by the authorization protocol;
-    // profile writes happen only inside the comment transaction.
+    // 授权协议不再传输昵称/网站；资料更新只随评论请求一起进行。
     const initRecord = init as Record<string, unknown> | undefined
     expect(initRecord?.nickname).toBeUndefined()
     expect(initRecord?.website_url).toBeUndefined()
@@ -201,8 +200,8 @@ describe('runAuthorizationFlow', () => {
   })
 
   it('returns closed when the popup window closes without a message', async () => {
-    // Give the close watcher (250ms interval) time to observe the closure
-    // before the ready/result deadlines fire.
+    // 给关闭监听器（250ms 间隔）足够时间观察到关闭，
+    // 赶在就绪/结果超时触发之前。
     const flow = runFlow({
       popup: { closed: true },
       timeoutMs: 2000,
@@ -224,13 +223,13 @@ describe('runAuthorizationFlow', () => {
       flow.popup.messages[0]?.type === 'furtalk:authorization-init'
         ? flow.popup.messages[0].request_id
         : ''
-    // Deliver from an attacker origin; the flow must not settle on it.
+    // 从攻击者来源投递消息；流程不应据此作出结论。
     flow.deliver(
       { type: 'furtalk:authorization-cancelled', request_id: requestId },
       'https://evil.example',
     )
     expect(flow.popup.messages.length).toBeGreaterThan(0)
-    // The popup is still open so the flow keeps waiting.
+    // 弹窗仍打开，因此流程继续等待。
   })
 
   it('ignores messages from the wrong source window', async () => {
@@ -254,7 +253,7 @@ describe('runAuthorizationFlow', () => {
         ? flow.popup.messages[0].request_id
         : ''
     flow.deliver({ type: 'furtalk:authorization-ready', request_id: requestId })
-    // Give any stale interval a chance to fire; no additional init should be sent.
+    // 给任何残留的定时器一次触发机会；不应再发送额外的初始化消息。
     await new Promise((resolve) =>
       setTimeout(resolve, INIT_RETRY_INTERVAL_MS * 2),
     )

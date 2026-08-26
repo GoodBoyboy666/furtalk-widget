@@ -61,8 +61,8 @@ describe('buildCommentTree', () => {
   })
 
   it('sorts siblings deterministically instead of trusting page order', () => {
-    // The old behavior retained the flat server order; the direction-aware
-    // builder now sorts every sibling level by (created_at, id).
+    // 旧行为保留平铺的服务端顺序；现在构建器会感知排序方向，
+    // 按 (created_at, id) 对每一层同级评论排序。
     const comments = [
       comment({ id: 'b' }),
       comment({ id: 'a' }),
@@ -88,8 +88,8 @@ describe('buildCommentTree', () => {
 
 describe('buildCommentTree direction', () => {
   function commentsWithSameTimestamp(): Comment[] {
-    // All ids share one created_at so the stable (created_at, id) order is
-    // fully determined by the decimal id.
+    // 所有 id 共享同一个 created_at，因此稳定的 (created_at, id) 顺序完全由
+    // 十进制 id 决定。
     return [
       comment({ id: '30', created_at: '2026-08-11T10:00:00Z' }),
       comment({ id: '10', created_at: '2026-08-11T10:00:00Z' }),
@@ -173,9 +173,8 @@ describe('buildCommentTree direction', () => {
   })
 
   it('sorts a child whose parent arrives later in the flat page correctly', () => {
-    // The tree is built from all nodes before ordering, so a desc page that
-    // returns the child before its parent still nests the child and then
-    // orders replies chronologically, independent of root direction.
+    // 先构建整棵树再排序，所以即使降序页面先返回子节点、后返回父节点，
+    // 也能正确嵌套，并按时序排列回复，与根排序方向无关。
     const comments = [
       comment({
         id: '3',
@@ -327,7 +326,7 @@ describe('hot ordering', () => {
       created_at: '2026-08-11T00:00:00Z',
     })
     expect(compareComments(older, newer, 'hot')).toBeGreaterThan(0)
-    // Same count and timestamp: higher id first.
+    // 计数与时间戳相同：id 较大者在前。
     const a = comment({
       id: '2',
       like_count: 2,
@@ -346,8 +345,7 @@ describe('hot ordering', () => {
     const missing = comment({ id: '1' })
     const zero = comment({ id: '2', like_count: 0 })
     const one = comment({ id: '3', like_count: 1 })
-    // A missing count ties with an explicit zero; the (created_at, id) tie-break
-    // then ranks the higher id first.
+    // 缺失计数与显式的 0 视为相同；再按 (created_at, id) 比较，id 较大的排前面。
     expect(compareComments(missing, zero, 'hot')).toBeGreaterThan(0)
     expect(compareComments(one, missing, 'hot')).toBeLessThan(0)
   })
@@ -372,7 +370,7 @@ describe('hot ordering', () => {
       }),
     ]
     const tree = buildCommentTree(comments, 'hot')
-    // Roots ranked by like_count desc: r2 (3) before root (0).
+    // 根节点按 like_count 降序排列：r2（3）在 root（0）之前。
     expect(tree.map((n) => n.id)).toEqual(['r2', 'root'])
     expect(tree[1]?.children.map((n) => n.id)).toEqual(['c2', 'c1'])
   })
@@ -412,8 +410,7 @@ describe('isOwnedBy', () => {
 
   it('denies ownership for missing, stale or non-authenticated sessions', () => {
     expect(isOwnedBy(comment({ id: '1', user_id: '10' }), null)).toBe(false)
-    // A session without an authenticated credential_mode (stale anonymous
-    // credential or pre-rollout response) never grants ownership.
+    // 缺少认证 credential_mode 的会话（陈旧匿名凭据或旧版响应）绝不判定为评论的所有者。
     expect(
       isOwnedBy(comment({ id: '1', user_id: '10' }), {
         valid: true,
@@ -423,7 +420,7 @@ describe('isOwnedBy', () => {
     expect(
       isOwnedBy(comment({ id: '1', user_id: '10' }), { valid: false }),
     ).toBe(false)
-    // Only the matching authenticated user owns the comment.
+    // 只有匹配的认证用户才拥有该评论。
     expect(
       isOwnedBy(comment({ id: '1', user_id: '10' }), {
         valid: true,

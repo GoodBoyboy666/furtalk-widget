@@ -6,8 +6,7 @@ import { renderMessage, type DisplayMessage } from '../src/i18n'
 import type { WidgetState } from '../src/state'
 import type { ProfileHints } from '../src/types'
 
-// Mock the CAPTCHA renderer so tests control provider mounting and token
-// callbacks without loading real provider scripts.
+// 模拟 CAPTCHA 渲染器，使测试无需加载真实脚本即可控制组件挂载与 token 回调。
 vi.mock('../src/captcha', () => ({
   mountCaptcha: vi.fn(),
 }))
@@ -98,7 +97,7 @@ function captchaInstance(
   return element
 }
 
-// addHost 向渲染根追加一个 CAPTCHA 宿主元素。
+// addHost 向渲染根节点追加一个验证码容器元素。
 function addHost(
   instance: CaptchaInstance,
   key: 'root' | 'reply',
@@ -154,7 +153,7 @@ describe('FurtalkCommentsElement comment CAPTCHA lifecycle', () => {
     instance.syncCaptchas()
     await vi.waitFor(() => expect(mountCaptcha).toHaveBeenCalledTimes(1))
 
-    // 关闭策略后宿主仍在渲染，但必须销毁实例且不再挂载。
+    // 关闭验证码策略后容器仍在渲染，但必须销毁组件实例且不再挂载。
     instance.state = {
       ...instance.state,
       config: {
@@ -206,7 +205,7 @@ describe('FurtalkCommentsElement comment CAPTCHA lifecycle', () => {
     instance.syncCaptchas()
     await vi.waitFor(() => expect(mountCaptcha).toHaveBeenCalledTimes(2))
 
-    // 各自的回调只写各自的 composer。
+    // 各自的回调只写各自的编辑器。
     const rootHostEl = rootHost as HTMLDivElement
     const replyHostEl = replyHost as HTMLDivElement
     expect(mountCaptcha).toHaveBeenNthCalledWith(
@@ -342,7 +341,7 @@ describe('FurtalkCommentsElement comment CAPTCHA submit payload', () => {
 
     await instance.createComment(instance.root)
 
-    // 无 token 时不再直接报错，而是打开掩膜等待解决；期间绝不发起提交。
+    // 没有 token 时不再直接报错，而是打开掩膜等待验证；期间绝不发起提交。
     expect(instance.captchaMaskKey).toBe('root')
     expect(createMock).not.toHaveBeenCalled()
   })
@@ -434,7 +433,7 @@ describe('FurtalkCommentsElement CAPTCHA mask', () => {
     instance.submitRoot()
     expect(instance.captchaMaskKey).toBe('root')
 
-    // 掩膜渲染后的宿主与 token 回调等价于 mountOneCaptcha 的路径。
+    // 掩膜渲染出的容器与 token 回调，等价于 mountOneCaptcha 的调用过程。
     addHost(instance, 'root')
     const handle = { reset: vi.fn() }
     vi.mocked(mountCaptcha).mockResolvedValue(handle)
@@ -448,7 +447,7 @@ describe('FurtalkCommentsElement CAPTCHA mask', () => {
     expect(createMock.mock.calls[0]?.[2]).toBe('mask-token')
     expect(instance.captchaMaskKey).toBeNull()
     expect(instance.pendingMaskedSubmit).toBeNull()
-    // 成功发布后 composer 重置为全新空状态，token 不再保留。
+    // 成功发布后编辑器重置为全新空状态，token 不再保留。
     expect(instance.root.comment).toBe('')
   })
 
@@ -572,7 +571,7 @@ describe('FurtalkCommentsElement CAPTCHA mask', () => {
     const createMock = vi.fn().mockResolvedValue(publishedComment)
     instance.api = { createComment: createMock }
 
-    // 让授权挂起：只有显式 resolve 后流程才会进入提交前一刻。
+    // 让授权一直处于进行中：只有显式 resolve 后，流程才会到达提交前一刻。
     let resolveAuth!: () => void
     instance.ensureAuthenticated = vi.fn().mockImplementation(
       () =>
@@ -590,7 +589,7 @@ describe('FurtalkCommentsElement CAPTCHA mask', () => {
     expect(instance.captchaMaskKey).toBeNull()
     expect(createMock).not.toHaveBeenCalled()
 
-    // 授权完成、进入提交前一刻才打开掩膜等待 token。
+    // 授权完成、到达提交前一刻才打开掩膜等待 token。
     resolveAuth()
     await vi.waitFor(() => expect(instance.captchaMaskKey).toBe('root'))
     expect(createMock).not.toHaveBeenCalled()
