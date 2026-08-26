@@ -1572,8 +1572,8 @@ describe('FurtalkCommentsElement sort control', () => {
     expect(asc?.parentElement?.classList.contains('inline-flex')).toBe(true)
     expect(asc?.getAttribute('aria-pressed')).toBe('false')
     expect(desc?.getAttribute('aria-pressed')).toBe('true')
-    expect(asc?.textContent?.trim()).toBe('最早优先')
-    expect(desc?.textContent?.trim()).toBe('最新优先')
+    expect(asc?.textContent?.trim()).toBe('最早')
+    expect(desc?.textContent?.trim()).toBe('最新')
   })
 
   it('renders the asc button pressed by default', () => {
@@ -2285,7 +2285,7 @@ describe('FurtalkCommentsElement language control', () => {
     )
     expect(
       zh.querySelector('[data-sort="asc"]')?.textContent?.trim(),
-    ).toBe('最早优先')
+    ).toBe('最早')
 
     instance.selectLanguage('en')
     const en = renderHost(instance)
@@ -2294,7 +2294,7 @@ describe('FurtalkCommentsElement language control', () => {
     )
     expect(
       en.querySelector('[data-sort="asc"]')?.textContent?.trim(),
-    ).toBe('Oldest first')
+    ).toBe('Oldest')
     expect(
       en.querySelector<HTMLButtonElement>('.ft-lang-trigger')?.getAttribute(
         'aria-label',
@@ -2372,7 +2372,7 @@ describe('FurtalkCommentsElement language control', () => {
       instance.shadowRoot
         .querySelector('[data-sort="asc"]')
         ?.textContent?.trim(),
-    ).toBe('Oldest first')
+    ).toBe('Oldest')
     expect(localStorage.getItem('furtalk:language')).toBe('en')
     expect(instance.languageMenuOpen).toBe(false)
     expect(instance.shadowRoot.querySelector('.ft-lang-menu')).toBeNull()

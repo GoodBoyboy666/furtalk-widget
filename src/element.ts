@@ -219,7 +219,7 @@ const ACTION_BUTTON =
 
 /** Sort control buttons within the segmented bar; pressed state gets active tab style. */
 const SORT_BUTTON =
-  'border-0 bg-transparent text-(--furtalk-text-muted) text-[12px] px-2.5 py-1 rounded-[calc(var(--furtalk-radius)-2px)] cursor-pointer [font:inherit] font-medium transition-all duration-150 hover:text-(--furtalk-text) aria-pressed:bg-(--furtalk-bg) aria-pressed:text-(--furtalk-accent) aria-pressed:font-semibold aria-pressed:shadow-2xs focus-visible:outline-2 focus-visible:outline-(--furtalk-accent) focus-visible:outline-offset-1'
+  'border-0 bg-transparent text-(--furtalk-text-muted) text-[12px] leading-4 px-2.5 py-1 rounded-[calc(var(--furtalk-radius)-2px)] cursor-pointer [font:inherit] font-medium transition-all duration-150 hover:text-(--furtalk-text) aria-pressed:bg-(--furtalk-bg) aria-pressed:text-(--furtalk-accent) aria-pressed:font-semibold aria-pressed:shadow-2xs focus-visible:outline-2 focus-visible:outline-(--furtalk-accent) focus-visible:outline-offset-1'
 
 /** Emoji category tab buttons; the selected tab switches to the accent fill. */
 const EMOJI_TAB_BUTTON =
