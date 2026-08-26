@@ -85,34 +85,34 @@ describe('parseWidgetConfig', () => {
   it('rejects a missing or non-decimal site-id', () => {
     expect(
       parseWidgetConfig({ 'page-key': 'k' }, location, defaultOrigin),
-    ).toHaveProperty('error')
+    ).toEqual({ code: 'invalid_site_id' })
     expect(
       parseWidgetConfig(
         { 'site-id': '0', 'page-key': 'k' },
         location,
         defaultOrigin,
       ),
-    ).toHaveProperty('error')
+    ).toEqual({ code: 'invalid_site_id' })
     expect(
       parseWidgetConfig(
         { 'site-id': 'abc', 'page-key': 'k' },
         location,
         defaultOrigin,
       ),
-    ).toHaveProperty('error')
+    ).toEqual({ code: 'invalid_site_id' })
   })
 
   it('rejects a missing or overlong page-key', () => {
     expect(
       parseWidgetConfig({ 'site-id': '123' }, location, defaultOrigin),
-    ).toHaveProperty('error')
+    ).toEqual({ code: 'missing_page_key' })
     expect(
       parseWidgetConfig(
         { 'site-id': '123', 'page-key': 'x'.repeat(513) },
         location,
         defaultOrigin,
       ),
-    ).toHaveProperty('error')
+    ).toEqual({ code: 'page_key_too_long', params: { max: 512 } })
   })
 
   it('rejects an invalid service-origin', () => {
@@ -126,6 +126,6 @@ describe('parseWidgetConfig', () => {
         location,
         defaultOrigin,
       ),
-    ).toHaveProperty('error')
+    ).toEqual({ code: 'invalid_service_origin' })
   })
 })

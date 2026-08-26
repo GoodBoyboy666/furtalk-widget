@@ -5,6 +5,7 @@ import { render } from 'lit'
 import type { TemplateResult } from 'lit'
 import { FurtalkCommentsElement, formatRelativeTime } from '../src/element'
 import type { CommentNode } from '../src/comments'
+import { localMessage, renderMessage, type DisplayMessage, type SupportedLanguage } from '../src/i18n'
 import type { WidgetState } from '../src/state'
 import type {
   Comment,
@@ -58,8 +59,10 @@ function renderNodeHost(
   const element = document.createElement(tagName) as unknown as {
     renderNode(n: CommentNode, s?: WidgetSession): TemplateResult
     deletingId: string | null
+    language: SupportedLanguage
   }
   element.deletingId = deletingId
+  element.language = 'zh-CN'
   const template = element.renderNode(comment, session)
   const host = document.createElement('div')
   render(template, host)
@@ -103,12 +106,14 @@ describe('FurtalkCommentsElement Markdown boundary', () => {
     const element = document.createElement(tagName) as unknown as {
       renderNode(n: CommentNode, s?: WidgetSession): TemplateResult
       deletingId: string | null
+      language: SupportedLanguage
       emojiCatalog: {
         packs: unknown[]
         imageByToken: Map<string, { id: string; name: string; src: string }>
       }
     }
     element.deletingId = null
+    element.language = 'zh-CN'
     element.emojiCatalog = {
       packs: [],
       imageByToken: new Map([
@@ -330,8 +335,10 @@ function composerHost(
   const element = document.createElement(COMPOSER_HOST_TAG) as unknown as {
     state: WidgetState
     hints: ProfileHints
+    language: SupportedLanguage
     renderRootComposer(): TemplateResult
   }
+  element.language = 'zh-CN'
   element.state = {
     status: 'ready',
     comments: [],
@@ -510,7 +517,7 @@ describe('FurtalkCommentsElement two-layer logout', () => {
     state: WidgetState
     config: { serviceOrigin: string } | null
     api: { clearWidgetSession(): Promise<void> } | null
-    widgetNotice: { text: string; reopenLogout?: boolean } | null
+    widgetNotice: { text: DisplayMessage; reopenLogout?: boolean } | null
     handleLogout(): void
     openLogoutPage(): void
   }
@@ -607,7 +614,9 @@ describe('FurtalkCommentsElement two-layer logout', () => {
       user_id: '1',
       site_id: '1',
     })
-    expect(instance.widgetNotice?.text).toContain('退出登录失败')
+    expect(renderMessage(instance.widgetNotice!.text, 'zh-CN')).toContain(
+      '退出登录失败',
+    )
     expect(instance.widgetNotice?.reopenLogout).toBe(true)
   })
 
@@ -619,7 +628,9 @@ describe('FurtalkCommentsElement two-layer logout', () => {
       vi.fn(() => null),
     )
     instance.handleLogout()
-    expect(instance.widgetNotice?.text).toContain('浏览器拦截')
+    expect(renderMessage(instance.widgetNotice!.text, 'zh-CN')).toContain(
+      '浏览器拦截',
+    )
     expect(instance.widgetNotice?.reopenLogout).toBe(true)
     await new Promise((resolve) => setTimeout(resolve, 0))
     // The widget session is still cleared by its own request result.
@@ -789,7 +800,9 @@ describe('FurtalkCommentsElement unified create', () => {
     await instance.createComment(composer)
 
     expect(createMock).not.toHaveBeenCalled()
-    expect(composer.error).toBe('请填写有效的昵称')
+    expect(
+      renderMessage(composer.error as unknown as DisplayMessage, 'zh-CN'),
+    ).toBe('请填写有效的昵称')
   })
 
   it('routes an administrator need_auth_code response through authorization and retries the same comment', async () => {
@@ -849,7 +862,9 @@ describe('FurtalkCommentsElement unified create', () => {
     // ensureAuthenticated is stubbed to succeed, so the retry re-runs and gets
     // need_auth_code again: the flow must stop instead of looping forever.
     expect(createMock).toHaveBeenCalledTimes(2)
-    expect(composer.error).toBe('授权未生效，请重试')
+    expect(
+      renderMessage(composer.error as unknown as DisplayMessage, 'zh-CN'),
+    ).toBe('授权未生效，请重试')
   })
 
   it('preserves the authenticated-mode lock via the unified flow', async () => {
@@ -893,7 +908,7 @@ describe('FurtalkCommentsElement unified create', () => {
       replyTargetId: null,
     })
 
-    expect(instance.state.notice).toBe('评论已发布。')
+    expect(renderMessage(instance.state.notice, 'zh-CN')).toBe('评论已发布。')
   })
 
   it('shows the moderation notice when the created comment is pending', async () => {
@@ -911,12 +926,17 @@ describe('FurtalkCommentsElement unified create', () => {
       replyTargetId: null,
     })
 
-    expect(instance.state.notice).toBe('评论已提交，等待审核。')
+    expect(renderMessage(instance.state.notice, 'zh-CN')).toBe(
+      '评论已提交，等待审核。',
+    )
   })
 
   it('clears a stale success notice when a new submission fails', async () => {
     const instance = createInstance('anonymous')
-    instance.state = { ...instance.state, notice: '评论已发布。' }
+    instance.state = {
+      ...instance.state,
+      notice: localMessage('notice.submissionPublished'),
+    }
     const createMock = vi.fn().mockRejectedValue(new Error('network down'))
     instance.api = { createComment: createMock }
     const composer = {
@@ -934,7 +954,10 @@ describe('FurtalkCommentsElement unified create', () => {
 
   it('clears a stale success notice before retrying a need_auth_code flow', async () => {
     const instance = createInstance('anonymous')
-    instance.state = { ...instance.state, notice: '评论已发布。' }
+    instance.state = {
+      ...instance.state,
+      notice: localMessage('notice.submissionPublished'),
+    }
     instance.api = {
       createComment: vi.fn().mockResolvedValue({ need_auth_code: true }),
     }
@@ -1010,9 +1033,11 @@ describe('FurtalkCommentsElement composer command group', () => {
         error: string
         replyTargetId: string
       }
+      language: SupportedLanguage
       renderNode(n: CommentNode, s?: WidgetSession): TemplateResult
     }
     element.reply = { comment: '', body: '', error: '', replyTargetId: '1' }
+    element.language = 'zh-CN'
     const reply = document.createElement('div')
     render(element.renderNode(node({ id: '1' }), authenticatedSession), reply)
     const group = reply.querySelector('.ft-reply-form .ft-command-group')
@@ -1030,7 +1055,8 @@ interface ReadyViewInstance {
   state: WidgetState
   hints: ProfileHints
   configError: string | null
-  widgetNotice: { text: string; reopenLogout?: boolean } | null
+  language: SupportedLanguage
+  widgetNotice: { text: DisplayMessage; reopenLogout?: boolean } | null
   captchaMaskKey: 'root' | 'reply' | null
   render(): TemplateResult
 }
@@ -1040,6 +1066,7 @@ function readyViewHost(overrides: Partial<WidgetState> = {}): HTMLDivElement {
     COMPOSER_HOST_TAG,
   ) as unknown as ReadyViewInstance
   element.configError = null
+  element.language = 'zh-CN'
   element.widgetNotice = null
   element.hints = { email: '', nickname: '', website_url: '' }
   element.captchaMaskKey = null
@@ -1078,6 +1105,7 @@ function maskedViewHost(
     COMPOSER_HOST_TAG,
   ) as unknown as ReadyViewInstance
   element.configError = null
+  element.language = 'zh-CN'
   element.widgetNotice = null
   element.hints = { email: 'a@b.example', nickname: 'Alice', website_url: '' }
   element.captchaMaskKey = key
@@ -1388,7 +1416,9 @@ describe('FurtalkCommentsElement comment item styling', () => {
 
 describe('FurtalkCommentsElement success notice', () => {
   it('renders a success notice in a distinct success style', () => {
-    const host = readyViewHost({ notice: '评论已发布。' })
+    const host = readyViewHost({
+      notice: localMessage('notice.submissionPublished'),
+    })
     const noticeEl = host.querySelector('.ft-success')
     expect(noticeEl).not.toBeNull()
     expect(noticeEl?.textContent).toContain('评论已发布。')
@@ -1572,33 +1602,40 @@ describe('formatRelativeTime', () => {
 
   it('formats seconds ago (<60s)', () => {
     const time = new Date(baseTime - 30 * 1000).toISOString()
-    expect(formatRelativeTime(time, baseTime)).toBe('30秒前')
+    expect(formatRelativeTime(time, 'zh-CN', baseTime)).toBe('30秒前')
   })
 
   it('formats minutes ago (<60m)', () => {
     const time = new Date(baseTime - 15 * 60 * 1000).toISOString()
-    expect(formatRelativeTime(time, baseTime)).toBe('15分钟前')
+    expect(formatRelativeTime(time, 'zh-CN', baseTime)).toBe('15分钟前')
   })
 
   it('formats hours ago (<24h)', () => {
     const time = new Date(baseTime - 3 * 3600 * 1000).toISOString()
-    expect(formatRelativeTime(time, baseTime)).toBe('3小时前')
+    expect(formatRelativeTime(time, 'zh-CN', baseTime)).toBe('3小时前')
   })
 
   it('formats days ago (<7d)', () => {
     const time = new Date(baseTime - 4 * 86400 * 1000).toISOString()
-    expect(formatRelativeTime(time, baseTime)).toBe('4天前')
+    expect(formatRelativeTime(time, 'zh-CN', baseTime)).toBe('4天前')
   })
 
-  it('falls back to localized date for older timestamps (>=7d)', () => {
+  it('falls back to a localized date for older timestamps (>=7d)', () => {
     const oldTime = new Date(baseTime - 10 * 86400 * 1000)
-    expect(formatRelativeTime(oldTime.toISOString(), baseTime)).toBe(
-      oldTime.toLocaleDateString(),
+    expect(formatRelativeTime(oldTime.toISOString(), 'zh-CN', baseTime)).toBe(
+      oldTime.toLocaleDateString('zh-CN'),
     )
   })
 
+  it('formats relative time in English', () => {
+    const time = new Date(baseTime - 2 * 3600 * 1000).toISOString()
+    expect(formatRelativeTime(time, 'en', baseTime)).toBe('2 hours ago')
+  })
+
   it('handles invalid timestamps gracefully', () => {
-    expect(formatRelativeTime('invalid-date', baseTime)).toBe('invalid-date')
+    expect(formatRelativeTime('invalid-date', 'zh-CN', baseTime)).toBe(
+      'invalid-date',
+    )
   })
 })
 
@@ -1619,8 +1656,10 @@ describe('FurtalkCommentsElement Like control', () => {
       state: WidgetState
       renderNode(n: CommentNode, s?: WidgetSession): TemplateResult
       deletingId: string | null
+      language: SupportedLanguage
     }
     element.deletingId = null
+    element.language = 'zh-CN'
     element.state = {
       status: 'ready',
       comments: [],
@@ -1734,8 +1773,10 @@ describe('FurtalkCommentsElement hot sort tab', () => {
     }
     const element = document.createElement(tagName) as unknown as {
       state: WidgetState
+      language: SupportedLanguage
       render(): TemplateResult
     }
+    element.language = 'zh-CN'
     element.state = {
       status: 'ready',
       comments: [],
@@ -1763,5 +1804,221 @@ describe('FurtalkCommentsElement hot sort tab', () => {
     const hot = host.querySelector<HTMLButtonElement>('[data-sort="hot"]')
     expect(hot?.getAttribute('aria-pressed')).toBe('true')
     expect(hot?.textContent).toContain('最热')
+  })
+})
+
+describe('FurtalkCommentsElement language control', () => {
+  interface LangComposer {
+    comment: string
+    body: string
+    error: DisplayMessage | ''
+    replyTargetId: string | null
+  }
+
+  interface LangInstance {
+    state: WidgetState
+    hints: ProfileHints
+    configError: string | null
+    language: SupportedLanguage
+    languageMenuOpen: boolean
+    widgetNotice: { text: DisplayMessage; reopenLogout?: boolean } | null
+    captchaMaskKey: 'root' | 'reply' | null
+    root: LangComposer
+    render(): TemplateResult
+    renderTrailingControls(): TemplateResult
+    toggleLanguageMenu(): void
+    setLanguageMenu(open: boolean): void
+    selectLanguage(language: SupportedLanguage): void
+  }
+
+  function langInstance(overrides: Partial<WidgetState> = {}): LangInstance {
+    const element = document.createElement(
+      COMPOSER_HOST_TAG,
+    ) as unknown as LangInstance
+    element.language = 'zh-CN'
+    element.languageMenuOpen = false
+    element.configError = null
+    element.widgetNotice = null
+    element.hints = { email: 'a@b.example', nickname: 'Alice', website_url: '' }
+    element.captchaMaskKey = null
+    element.root = { comment: '', body: '', error: '', replyTargetId: null }
+    element.state = {
+      status: 'ready',
+      comments: [],
+      nextCursor: null,
+      sort: 'asc',
+      loadingMore: false,
+      authPhase: 'idle',
+      pendingLikeIds: {},
+      config: {
+        site_id: '1',
+        name: 'Site',
+        comment_mode: 'anonymous',
+        moderation: 'direct',
+        user_delete_mode: 'soft',
+        max_reply_depth: 5,
+        captcha: { comment: { required: false } },
+      },
+      ...overrides,
+    }
+    return element
+  }
+
+  function renderHost(instance: LangInstance): HTMLDivElement {
+    const host = document.createElement('div')
+    render(instance.render(), host)
+    return host
+  }
+
+  afterEach(() => {
+    localStorage.clear()
+    // 清理任何遗留的 document 级菜单关闭监听器。
+    document
+      .querySelectorAll(COMPOSER_HOST_TAG)
+      .forEach((element) => (element as unknown as { languageMenuOpen: boolean }).languageMenuOpen = false)
+  })
+
+  it('keeps the language trigger visible without a portal link for anonymous visitors', () => {
+    const host = renderHost(langInstance())
+    expect(host.querySelector('.ft-portal-link')).toBeNull()
+    const trigger = host.querySelector<HTMLButtonElement>('.ft-lang-trigger')
+    expect(trigger).not.toBeNull()
+    expect(trigger?.querySelector('.ft-lang-icon')).not.toBeNull()
+    expect(host.querySelector('.ft-trailing-controls')).not.toBeNull()
+  })
+
+  it('places the language trigger after the portal link for administrators', () => {
+    const instance = langInstance({
+      session: {
+        valid: true,
+        credential_mode: 'authenticated',
+        role: 'admin',
+      },
+    })
+    const host = renderHost(instance)
+    const link = host.querySelector<HTMLAnchorElement>('.ft-portal-link')
+    const trigger = host.querySelector<HTMLButtonElement>('.ft-lang-trigger')
+    expect(link).not.toBeNull()
+    expect(trigger).not.toBeNull()
+    const controls = host.querySelector('.ft-trailing-controls')
+    expect(controls?.children[0]).toBe(link)
+    expect(controls?.children[1]?.querySelector('.ft-lang-trigger')).toBe(
+      trigger,
+    )
+  })
+
+  it('exposes an accessible name and expanded state on the trigger', () => {
+    const instance = langInstance()
+    const closed = renderHost(instance)
+    const trigger = closed.querySelector<HTMLButtonElement>('.ft-lang-trigger')
+    expect(trigger?.getAttribute('aria-haspopup')).toBe('menu')
+    expect(trigger?.getAttribute('aria-expanded')).toBe('false')
+    expect(trigger?.getAttribute('aria-label')).toBe('切换语言')
+
+    instance.languageMenuOpen = true
+    const opened = renderHost(instance)
+    expect(
+      opened.querySelector<HTMLButtonElement>('.ft-lang-trigger')?.getAttribute(
+        'aria-expanded',
+      ),
+    ).toBe('true')
+    expect(opened.querySelector('.ft-lang-menu')).not.toBeNull()
+  })
+
+  it('renders radio-style menu items with native labels and a selected state', () => {
+    const instance = langInstance()
+    instance.languageMenuOpen = true
+    const host = renderHost(instance)
+    const menu = host.querySelector<HTMLElement>('.ft-lang-menu')
+    expect(menu?.getAttribute('role')).toBe('menu')
+    expect(menu?.getAttribute('aria-label')).toBe('选择语言')
+    const items = [
+      ...host.querySelectorAll<HTMLButtonElement>(
+        '.ft-lang-menu [role="menuitemradio"]',
+      ),
+    ]
+    expect(items).toHaveLength(2)
+    expect(items[0]?.textContent?.trim()).toBe('简体中文')
+    expect(items[0]?.getAttribute('aria-checked')).toBe('true')
+    expect(items[1]?.textContent?.trim()).toBe('English')
+    expect(items[1]?.getAttribute('aria-checked')).toBe('false')
+  })
+
+  it('closes the menu and restores focus to the trigger on Escape', () => {
+    const instance = langInstance()
+    instance.toggleLanguageMenu()
+    expect(instance.languageMenuOpen).toBe(true)
+    const host = renderHost(instance)
+    host
+      .querySelector<HTMLElement>('.ft-lang-menu')
+      ?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    expect(instance.languageMenuOpen).toBe(false)
+  })
+
+  it('retranslates visible local feedback and controls on switch without a reload', () => {
+    const instance = langInstance()
+    instance.root.error = localMessage('validate.email')
+    instance.state = {
+      ...instance.state,
+      comments: [
+        node({
+          id: '1',
+          created_at: '2026-08-14T00:00:00Z',
+          published_at: '2026-08-14T00:00:00Z',
+        }),
+      ],
+    }
+    const zh = renderHost(instance)
+    expect(zh.querySelector('.ft-error-text')?.textContent).toContain(
+      '请填写有效的邮箱地址',
+    )
+    expect(
+      zh.querySelector('[data-sort="asc"]')?.textContent?.trim(),
+    ).toBe('最早优先')
+
+    instance.selectLanguage('en')
+    const en = renderHost(instance)
+    expect(en.querySelector('.ft-error-text')?.textContent).toContain(
+      'Please enter a valid email address',
+    )
+    expect(
+      en.querySelector('[data-sort="asc"]')?.textContent?.trim(),
+    ).toBe('Oldest first')
+    expect(
+      en.querySelector<HTMLButtonElement>('.ft-lang-trigger')?.getAttribute(
+        'aria-label',
+      ),
+    ).toBe('Change language')
+  })
+
+  it('retranslates an already-visible success notice on switch', () => {
+    const instance = langInstance({
+      notice: localMessage('notice.submissionPublished'),
+    })
+    const zh = renderHost(instance)
+    expect(zh.querySelector('.ft-success')?.textContent).toContain('评论已发布。')
+    instance.selectLanguage('en')
+    const en = renderHost(instance)
+    expect(en.querySelector('.ft-success')?.textContent).toContain(
+      'Your comment has been published.',
+    )
+  })
+
+  it('persists a manual selection to the widget-owned key', () => {
+    const instance = langInstance()
+    instance.selectLanguage('en')
+    expect(localStorage.getItem('furtalk:language')).toBe('en')
+    expect(instance.language).toBe('en')
+    expect(instance.languageMenuOpen).toBe(false)
+  })
+
+  it('keeps drafts, comments, and ordering across a language switch', () => {
+    const comments = [node({ id: '1' })]
+    const instance = langInstance({ comments, sort: 'desc' })
+    instance.root.body = 'draft body'
+    instance.selectLanguage('en')
+    expect(instance.state.comments).toHaveLength(1)
+    expect(instance.state.sort).toBe('desc')
+    expect(instance.root.body).toBe('draft body')
   })
 })

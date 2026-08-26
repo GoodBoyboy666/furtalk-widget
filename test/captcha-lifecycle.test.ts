@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { FurtalkCommentsElement } from '../src/element'
+import { renderMessage, type DisplayMessage } from '../src/i18n'
 import type { WidgetState } from '../src/state'
 import type { ProfileHints } from '../src/types'
 
@@ -259,7 +260,9 @@ describe('FurtalkCommentsElement comment CAPTCHA lifecycle', () => {
 
     instance.syncCaptchas()
     await vi.waitFor(() =>
-      expect(instance.root.error).toBe('人机验证暂不可用，请稍后重试'),
+      expect(
+        renderMessage(instance.root.error as unknown as DisplayMessage, 'zh-CN'),
+      ).toBe('人机验证暂不可用，请稍后重试'),
     )
     // 失败后不进入无限重试循环。
     instance.syncCaptchas()
@@ -417,7 +420,9 @@ describe('FurtalkCommentsElement CAPTCHA mask', () => {
     instance.submitRoot()
 
     expect(instance.captchaMaskKey).toBeNull()
-    expect(instance.root.error).toBe('评论内容不能为空')
+    expect(
+      renderMessage(instance.root.error as unknown as DisplayMessage, 'zh-CN'),
+    ).toBe('评论内容不能为空')
     expect(createMock).not.toHaveBeenCalled()
   })
 

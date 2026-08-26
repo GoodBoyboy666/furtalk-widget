@@ -4,6 +4,7 @@ import { render } from 'lit'
 import type { TemplateResult } from 'lit'
 import { FurtalkCommentsElement } from '../src/element'
 import type { EmojiCatalog } from '../src/emoji'
+import type { SupportedLanguage } from '../src/i18n'
 import type { WidgetState } from '../src/state'
 import type { RuntimeConfig } from '../src/types'
 
@@ -77,6 +78,7 @@ const sampleCatalog: EmojiCatalog = {
 
 interface EmojiTestElement {
   state: WidgetState
+  language: SupportedLanguage
   emojiCatalog: EmojiCatalog | null
   emojiOpenKey: 'root' | 'reply' | null
   emojiActiveTab: string
@@ -100,6 +102,7 @@ function makeElement() {
 
 function readyElement(overrides: Partial<RuntimeConfig> = {}): EmojiTestElement {
   const element = makeElement()
+  element.language = 'zh-CN'
   element.state = {
     status: 'ready',
     comments: [],

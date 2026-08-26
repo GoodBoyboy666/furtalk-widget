@@ -7,6 +7,7 @@
  */
 
 import type { Comment, CommentSort, WidgetSession } from './types'
+import type { TranslationKey } from './i18n'
 
 export interface CommentNode extends Comment {
   children: CommentNode[]
@@ -101,14 +102,16 @@ export function buildCommentTree(
 }
 
 /**
- * Derives the success notice copy for a created comment. A `pending` status
- * means the comment awaits moderation; `published` is shown directly. Any
- * other status (or a non-comment create result) yields no success notice so a
- * failed request can never display success feedback.
+ * Derives the success-notice translation key for a created comment. A
+ * `pending` status means the comment awaits moderation; `published` is shown
+ * directly. Any other status (or a non-comment create result) yields no
+ * success notice so a failed request can never display success feedback.
  */
-export function submissionNotice(status: Comment['status']): string | null {
-  if (status === 'pending') return '评论已提交，等待审核。'
-  if (status === 'published') return '评论已发布。'
+export function submissionNotice(
+  status: Comment['status'],
+): TranslationKey | null {
+  if (status === 'pending') return 'notice.submissionPending'
+  if (status === 'published') return 'notice.submissionPublished'
   return null
 }
 

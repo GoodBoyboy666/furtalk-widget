@@ -8,6 +8,7 @@
  */
 
 import type { ProfileHints } from './types'
+import { isSupportedLanguage, type SupportedLanguage } from './i18n'
 
 export const EMPTY_PROFILE_HINTS: ProfileHints = {
   email: '',
@@ -68,6 +69,41 @@ function safeStorage(): Storage | null {
 export interface ProfileStoreStorage {
   getItem(key: string): string | null
   setItem(key: string, value: string): void
+}
+
+/**
+ * Widget-owned language preference key. Shared across widget instances and
+ * sites on the same embedding origin; the browser's same-origin storage rules
+ * define the persistence boundary.
+ */
+export const LANGUAGE_KEY = 'furtalk:language'
+
+/** Reads the stored language preference defensively; null on any failure. */
+export function loadLanguage(
+  storage?: ProfileStoreStorage | null,
+): SupportedLanguage | null {
+  const backend = storage === undefined ? safeStorage() : storage
+  if (!backend) return null
+  try {
+    const raw = backend.getItem(LANGUAGE_KEY)
+    return isSupportedLanguage(raw) ? raw : null
+  } catch {
+    return null
+  }
+}
+
+/** Persists the language preference; failures degrade to in-memory behavior. */
+export function saveLanguage(
+  language: SupportedLanguage,
+  storage?: ProfileStoreStorage | null,
+): void {
+  const backend = storage === undefined ? safeStorage() : storage
+  if (!backend) return
+  try {
+    backend.setItem(LANGUAGE_KEY, language)
+  } catch {
+    // Storage unavailable: the selection still applies for this session.
+  }
 }
 
 export function createProfileStore(

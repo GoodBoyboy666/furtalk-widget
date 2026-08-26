@@ -37,11 +37,25 @@ import {
   submissionNotice,
   type CommentNode,
 } from './comments'
-import type { WidgetConfig } from './config'
+import type { ConfigError, WidgetConfig } from './config'
 import { parseWidgetConfig } from './config'
 import { toWidgetError, WidgetError } from './errors'
 import { loadEmojiCatalog, type EmojiCatalog, type EmojiItem } from './emoji'
 import { renderCommentContent as renderCommentBody } from './emoji-renderer'
+import {
+  formatRelativeTime,
+  LANGUAGE_LABELS,
+  localMessage,
+  prefixMessage,
+  rawMessage,
+  renderMessage,
+  resolveLanguage,
+  SUPPORTED_LANGUAGES,
+  translate,
+  type DisplayMessage,
+  type SupportedLanguage,
+  type TranslationKey,
+} from './i18n'
 import { insertAtSelection } from './insertion'
 import { validateProfileHints } from './profile'
 import {
@@ -51,7 +65,12 @@ import {
   type PendingAction,
   type WidgetState,
 } from './state'
-import { createProfileStore, type ProfileStore } from './storage'
+import {
+  createProfileStore,
+  loadLanguage,
+  saveLanguage,
+  type ProfileStore,
+} from './storage'
 import type {
   CaptchaProjection,
   Comment,
@@ -60,6 +79,8 @@ import type {
   RuntimeConfig,
   WidgetSession,
 } from './types'
+
+export { formatRelativeTime } from './i18n'
 
 /** Derives the Furtalk service origin from the script URL (import.meta.url). */
 export function defaultServiceOrigin(): string {
@@ -77,7 +98,8 @@ interface ComposerTokens {
 
 interface ComposerState extends ComposerTokens {
   body: string
-  error: string
+  /** Render-time display descriptor; `''` means no error is shown. */
+  error: DisplayMessage | ''
   /** Non-null when this is the reply composer for a specific comment. */
   replyTargetId: string | null
 }
@@ -100,31 +122,26 @@ function isNeedAuthCodeResult(
   return (result as { need_auth_code?: boolean }).need_auth_code === true
 }
 
-const AUTH_NOTICE: Record<AuthPhase, { title: string; detail: string }> = {
-  idle: { title: '', detail: '' },
-  opening: { title: '正在打开授权窗口…', detail: '请在弹出窗口中完成授权。' },
-  waiting: { title: '等待授权…', detail: '授权窗口已打开，请完成登录与授权。' },
-  exchanging: { title: '正在完成授权…', detail: '正在建立评论会话，请稍候。' },
+const AUTH_NOTICE: Record<
+  Exclude<AuthPhase, 'idle'>,
+  { title: TranslationKey; detail: TranslationKey }
+> = {
+  opening: { title: 'auth.opening.title', detail: 'auth.opening.detail' },
+  waiting: { title: 'auth.waiting.title', detail: 'auth.waiting.detail' },
+  exchanging: {
+    title: 'auth.exchanging.title',
+    detail: 'auth.exchanging.detail',
+  },
   cancelled: {
-    title: '已取消授权',
-    detail: '取消授权后无法以账号身份发表评论。',
+    title: 'auth.cancelled.title',
+    detail: 'auth.cancelled.detail',
   },
-  blocked: {
-    title: '授权窗口被拦截',
-    detail: '请允许本站点弹出窗口后重试。',
-  },
-  closed: {
-    title: '授权窗口已关闭',
-    detail: '可以重新发起授权。',
-  },
-  expired: {
-    title: '登录状态已过期',
-    detail: '请重新授权后再发表评论。',
-  },
+  blocked: { title: 'auth.blocked.title', detail: 'auth.blocked.detail' },
+  closed: { title: 'auth.closed.title', detail: 'auth.closed.detail' },
+  expired: { title: 'auth.expired.title', detail: 'auth.expired.detail' },
   unsupported: {
-    title: '浏览器不支持评论会话',
-    detail:
-      '当前浏览器未保存评论会话 Cookie（可能禁用了第三方 Cookie 或分区 Cookie）。请允许后重试。',
+    title: 'auth.unsupported.title',
+    detail: 'auth.unsupported.detail',
   },
 }
 
@@ -225,24 +242,17 @@ const INPUT_TEXT =
 const WIDGET_ROOT =
   'ft-widget bg-(--furtalk-bg) rounded-(--furtalk-radius) text-[15px]'
 
-/** Formats a timestamp as relative time (<7d) or localized date string (>=7d). */
-export function formatRelativeTime(
-  isoString: string,
-  now: number = Date.now(),
-): string {
-  const timestamp = Date.parse(isoString)
-  if (Number.isNaN(timestamp)) return isoString
-  const diffMs = Math.max(0, now - timestamp)
-  const seconds = Math.floor(diffMs / 1000)
-  if (seconds < 60) return `${Math.max(1, seconds)}秒前`
-  const minutes = Math.floor(seconds / 60)
-  if (minutes < 60) return `${minutes}分钟前`
-  const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours}小时前`
-  const days = Math.floor(hours / 24)
-  if (days < 7) return `${days}天前`
-  return new Date(timestamp).toLocaleDateString()
-}
+/** Icon-only language trigger beside the optional portal link. */
+const LANG_TRIGGER_BUTTON =
+  'ft-lang-trigger inline-flex items-center p-1.5 border-0 bg-transparent text-(--furtalk-text-muted) rounded-(--furtalk-radius) cursor-pointer [font:inherit] transition-colors hover:text-(--furtalk-text) hover:bg-(--furtalk-bg-muted) aria-expanded:text-(--furtalk-accent) aria-expanded:bg-(--furtalk-bg-muted) focus-visible:outline-2 focus-visible:outline-(--furtalk-accent) focus-visible:outline-offset-1'
+
+/** Language menu panel anchored under the trigger. */
+const LANG_MENU =
+  'ft-lang-menu absolute right-0 top-full mt-1 z-20 min-w-[8rem] rounded-(--furtalk-radius) p-1 bg-(--furtalk-bg) border border-solid border-(--furtalk-border) shadow-[0_4px_20px_rgba(0,0,0,0.08)]'
+
+/** Radio-style language menu item. */
+const LANG_MENU_ITEM =
+  'block w-full text-left px-3 py-1.5 border-0 bg-transparent text-(--furtalk-text) text-[13px] rounded-md cursor-pointer [font:inherit] hover:bg-(--furtalk-bg-muted) aria-checked:text-(--furtalk-accent) aria-checked:font-semibold focus-visible:outline-2 focus-visible:outline-(--furtalk-accent) focus-visible:outline-offset-1'
 
 export class FurtalkCommentsElement extends LitElement {
   static override properties = {
@@ -263,15 +273,26 @@ export class FurtalkCommentsElement extends LitElement {
 
   private state: WidgetState = initialState
   private config: WidgetConfig | null = null
-  private configError: string | null = null
+  private configError: ConfigError | null = null
   private api: ApiClient | null = null
   private store: ProfileStore | null = null
   private booted = false
 
   private hints: ProfileHints = { email: '', nickname: '', website_url: '' }
 
+  /** Active display language; resolved before the first render. */
+  private language: SupportedLanguage = resolveLanguage(null, [])
+
+  /** Whether the icon-triggered language menu is currently open. */
+  private languageMenuOpen = false
+  /** Removes the document-level outside-click listener while the menu is open. */
+  private languageMenuClose: (() => void) | null = null
+
   /** Recoverable widget-level notice (logout failures and popup-block fallbacks). */
-  private widgetNotice: { text: string; reopenLogout?: boolean } | null = null
+  private widgetNotice: {
+    text: DisplayMessage
+    reopenLogout?: boolean
+  } | null = null
 
   private root: ComposerState = emptyComposer()
   private reply: ComposerState | null = null
@@ -313,6 +334,9 @@ export class FurtalkCommentsElement extends LitElement {
 
   override disconnectedCallback(): void {
     super.disconnectedCallback()
+    this.languageMenuClose?.()
+    this.languageMenuClose = null
+    this.languageMenuOpen = false
     for (const handle of this.captchaHandles.values()) {
       try {
         handle.reset()
@@ -333,14 +357,21 @@ export class FurtalkCommentsElement extends LitElement {
     this.emojiAbort = null
   }
 
-  /** Boots the widget: parse config, load runtime config, thread and session. */
+  /** Boots the widget: resolve language, parse config, load runtime config, thread and session. */
   boot(): void {
+    // The initial locale is resolved before the first scheduled render so the
+    // widget root carries the correct `lang` and every copy renders localized.
+    // A stored preference wins, then the browser language list, then `en`.
+    this.language = resolveLanguage(loadLanguage(), navigator.languages)
     this.state = initialState
     this.configError = null
     this.root = emptyComposer()
     this.reply = null
     this.deletingId = null
     this.widgetNotice = null
+    this.languageMenuClose?.()
+    this.languageMenuClose = null
+    this.languageMenuOpen = false
     this.captchaFailed.clear()
     this.captchaMaskKey = null
     this.lastMaskKey = null
@@ -365,8 +396,8 @@ export class FurtalkCommentsElement extends LitElement {
       defaultServiceOrigin(),
       { href: window.location.href, title: document.title },
     )
-    if ('error' in parsed) {
-      this.configError = parsed.error
+    if ('code' in parsed) {
+      this.configError = parsed
       this.requestUpdate()
       return
     }
@@ -552,6 +583,81 @@ export class FurtalkCommentsElement extends LitElement {
     return validateProfileHints(this.hints)
   }
 
+  /** Translates a key in the active locale. */
+  private t(
+    key: TranslationKey,
+    params?: Record<string, string | number>,
+  ): string {
+    return translate(this.language, key, params)
+  }
+
+  // ---- Language menu ------------------------------------------------------
+
+  private toggleLanguageMenu(): void {
+    this.setLanguageMenu(!this.languageMenuOpen)
+  }
+
+  /** Opens or closes the language menu, wiring outside-click and focus. */
+  private setLanguageMenu(open: boolean): void {
+    if (open === this.languageMenuOpen) return
+    this.languageMenuOpen = open
+    if (open) {
+      this.languageMenuClose?.()
+      const onPointerDown = (event: MouseEvent) => {
+        const target = event.target as Node | null
+        const control = this.renderRoot?.querySelector('.ft-lang')
+        if (control && target && !control.contains(target)) {
+          this.setLanguageMenu(false)
+          this.focusLanguageTrigger()
+        }
+      }
+      document.addEventListener('mousedown', onPointerDown)
+      this.languageMenuClose = () =>
+        document.removeEventListener('mousedown', onPointerDown)
+      this.requestUpdate()
+      requestAnimationFrame(() => {
+        this.renderRoot
+          ?.querySelector<HTMLElement>('.ft-lang-menu [aria-checked="true"]')
+          ?.focus()
+      })
+    } else {
+      this.languageMenuClose?.()
+      this.languageMenuClose = null
+      this.requestUpdate()
+    }
+  }
+
+  private focusLanguageTrigger(): void {
+    requestAnimationFrame(() => {
+      this.renderRoot?.querySelector<HTMLElement>('.ft-lang-trigger')?.focus()
+    })
+  }
+
+  private moveLanguageFocus(direction: 1 | -1): void {
+    const items = [
+      ...this.renderRoot.querySelectorAll<HTMLElement>(
+        '.ft-lang-menu [role="menuitemradio"]',
+      ),
+    ]
+    if (items.length === 0) return
+    const active = this.renderRoot.querySelector<HTMLElement>(
+      '.ft-lang-menu [aria-checked="true"]',
+    )
+    const index = items.indexOf(active ?? items[0]!)
+    const next = (index + direction + items.length) % items.length
+    items[next]?.focus()
+  }
+
+  private selectLanguage(language: SupportedLanguage): void {
+    if (language !== this.language) {
+      this.language = language
+      saveLanguage(language)
+      this.requestUpdate()
+    }
+    this.setLanguageMenu(false)
+    this.focusLanguageTrigger()
+  }
+
   // ---- Profile -----------------------------------------------------------
 
   private saveProfile(): void {
@@ -655,7 +761,7 @@ export class FurtalkCommentsElement extends LitElement {
         // configured (or the provider script failed to load). The server
         // stays authoritative; show a recoverable error inside the mask.
         this.captchaFailed.add(key)
-        composer.error = '人机验证暂不可用，请稍后重试'
+        composer.error = localMessage('validate.captchaUnavailable')
         this.requestUpdate()
       }
     }
@@ -702,7 +808,7 @@ export class FurtalkCommentsElement extends LitElement {
     }
     if (this.captchaMaskKey === 'root') return
     if (this.root.body.trim() === '') {
-      this.root.error = '评论内容不能为空'
+      this.root.error = localMessage('validate.bodyEmpty')
       this.requestUpdate()
       return
     }
@@ -720,7 +826,7 @@ export class FurtalkCommentsElement extends LitElement {
     }
     if (this.captchaMaskKey === 'reply') return
     if (this.reply.body.trim() === '') {
-      this.reply.error = '回复内容不能为空'
+      this.reply.error = localMessage('validate.replyEmpty')
       this.requestUpdate()
       return
     }
@@ -736,12 +842,12 @@ export class FurtalkCommentsElement extends LitElement {
   private validateAttribution(composer: ComposerState): boolean {
     const hints = this.normalizedHints
     if (!hints.email) {
-      composer.error = '请填写有效的邮箱地址'
+      composer.error = localMessage('validate.email')
       this.requestUpdate()
       return false
     }
     if (!hints.nickname) {
-      composer.error = '请填写有效的昵称'
+      composer.error = localMessage('validate.nickname')
       this.requestUpdate()
       return false
     }
@@ -913,7 +1019,7 @@ export class FurtalkCommentsElement extends LitElement {
       this.requestUpdate()
     } catch (error) {
       this.widgetNotice = {
-        text: '退出登录失败：' + this.composeMessage(error),
+        text: prefixMessage('notice.logoutFailed', this.composeMessage(error)),
         reopenLogout: true,
       }
       this.requestUpdate()
@@ -934,7 +1040,7 @@ export class FurtalkCommentsElement extends LitElement {
       // The widget session is still cleared by its own request; tell the user
       // the first-party account remains logged in and offer a manual action.
       this.widgetNotice = {
-        text: '登出页面被浏览器拦截，主站登录尚未退出，请手动打开登出页。',
+        text: localMessage('notice.logoutBlocked'),
         reopenLogout: true,
       }
       this.requestUpdate()
@@ -949,7 +1055,7 @@ export class FurtalkCommentsElement extends LitElement {
     if (!this.api || !this.config) return
     const projection = this.commentCaptchaProjection()
     if (projection?.required && !action.captchaToken) {
-      composer.error = '请先完成人机验证'
+      composer.error = localMessage('validate.captcha')
       this.requestUpdate()
       return
     }
@@ -981,7 +1087,7 @@ export class FurtalkCommentsElement extends LitElement {
         this.state = widgetReducer(this.state, { type: 'pending/set', action })
         this.requestUpdate()
         if (fromAuthRetry) {
-          composer.error = '授权未生效，请重试'
+          composer.error = localMessage('validate.authNotEffective')
           this.requestUpdate()
           return
         }
@@ -995,10 +1101,12 @@ export class FurtalkCommentsElement extends LitElement {
       // Success copy is derived from the created comment status: pending means
       // the comment awaits moderation, published means it is live. Any other
       // status clears stale success feedback (failure never shows success).
-      const notice = submissionNotice(created.status)
+      const noticeKey = submissionNotice(created.status)
       this.state = widgetReducer(
         this.state,
-        notice ? { type: 'notice/set', notice } : { type: 'notice/clear' },
+        noticeKey
+          ? { type: 'notice/set', notice: localMessage(noticeKey) }
+          : { type: 'notice/clear' },
       )
       if (composer.replyTargetId) {
         this.teardownCaptcha(this.composerKey(composer))
@@ -1017,7 +1125,7 @@ export class FurtalkCommentsElement extends LitElement {
         widgetError.code === 'captcha_required' ||
         widgetError.code === 'captcha_failed'
       ) {
-        composer.error = '请先完成人机验证'
+        composer.error = localMessage('validate.captcha')
         this.teardownCaptcha(this.composerKey(composer))
         return
       }
@@ -1036,7 +1144,7 @@ export class FurtalkCommentsElement extends LitElement {
         })
         return
       }
-      composer.error = widgetError.message
+      composer.error = this.composeMessage(error)
       this.requestUpdate()
     }
   }
@@ -1241,7 +1349,9 @@ export class FurtalkCommentsElement extends LitElement {
         this.handleSessionExpired({ type: 'like', commentId, like })
         return
       }
-      this.widgetNotice = { text: '点赞失败：' + this.composeMessage(error) }
+      this.widgetNotice = {
+        text: prefixMessage('notice.likeFailed', this.composeMessage(error)),
+      }
       this.requestUpdate()
     }
   }
@@ -1274,7 +1384,9 @@ export class FurtalkCommentsElement extends LitElement {
         result,
       })
       this.widgetNotice = {
-        text: result.is_pinned ? '评论已置顶。' : '评论已取消置顶。',
+        text: localMessage(
+          result.is_pinned ? 'notice.pinned' : 'notice.unpinned',
+        ),
       }
       this.requestUpdate()
       await this.loadPage()
@@ -1284,9 +1396,10 @@ export class FurtalkCommentsElement extends LitElement {
         commentId,
       })
       this.widgetNotice = {
-        text:
-          (pinned ? '置顶失败：' : '取消置顶失败：') +
+        text: prefixMessage(
+          pinned ? 'notice.pinFailed' : 'notice.unpinFailed',
           this.composeMessage(error),
+        ),
       }
       this.requestUpdate()
     }
@@ -1296,16 +1409,16 @@ export class FurtalkCommentsElement extends LitElement {
 
   private renderError(error: WidgetError): TemplateResult {
     return html`
-      <div class="${WIDGET_ROOT}">
+      <div class="${WIDGET_ROOT}" lang=${this.language}>
         <div class="${STATE_ERROR}" role="alert">
-          <strong>无法加载评论</strong>
+          <strong>${this.t('config.error.loadComments')}</strong>
           <p class="ft-note ${NOTE_TEXT}">${error.message}</p>
           <button
             type="button"
             class="${DEFAULT_BUTTON}"
             @click=${() => this.boot()}
           >
-            重试
+            ${this.t('common.retry')}
           </button>
         </div>
       </div>
@@ -1313,8 +1426,8 @@ export class FurtalkCommentsElement extends LitElement {
   }
 
   private renderAuthBanner(phase: AuthPhase): TemplateResult | typeof nothing {
-    const notice = AUTH_NOTICE[phase]
     if (phase === 'idle') return nothing
+    const notice = AUTH_NOTICE[phase]
     const recoverable =
       phase === 'cancelled' ||
       phase === 'blocked' ||
@@ -1326,8 +1439,10 @@ export class FurtalkCommentsElement extends LitElement {
         class="ft-auth-banner border border-solid border-[#bfdbfe] bg-[#eff6ff] text-[#1e40af] p-3.5 rounded-(--furtalk-radius) mb-3 text-[13.5px]"
         role="status"
       >
-        <strong class="block mb-0.5">${notice.title}</strong>
-        <span class="ft-note text-inherit text-[13px]">${notice.detail}</span>
+        <strong class="block mb-0.5">${this.t(notice.title)}</strong>
+        <span class="ft-note text-inherit text-[13px]"
+          >${this.t(notice.detail)}</span
+        >
         ${
           recoverable
             ? html`<button
@@ -1335,7 +1450,7 @@ export class FurtalkCommentsElement extends LitElement {
                 class="${DEFAULT_BUTTON} mt-2"
                 @click=${() => void this.retryPending()}
               >
-                重试
+                ${this.t('common.retry')}
               </button>`
             : nothing
         }
@@ -1355,8 +1470,8 @@ export class FurtalkCommentsElement extends LitElement {
             type="text"
             autocomplete="nickname"
             maxlength="100"
-            placeholder="昵称"
-            aria-label="昵称"
+            placeholder=${this.t('profile.nickname')}
+            aria-label=${this.t('profile.nickname')}
             .value=${this.hints.nickname}
             ?disabled=${locked}
             @input=${(event: Event) =>
@@ -1372,8 +1487,8 @@ export class FurtalkCommentsElement extends LitElement {
             class="ft-input ${INPUT_TEXT} focus:bg-(--furtalk-bg) focus:outline-none focus:ring-0"
             type="email"
             autocomplete="email"
-            placeholder="邮箱"
-            aria-label="邮箱"
+            placeholder=${this.t('profile.email')}
+            aria-label=${this.t('profile.email')}
             .value=${this.hints.email}
             ?disabled=${locked}
             @input=${(event: Event) =>
@@ -1389,8 +1504,8 @@ export class FurtalkCommentsElement extends LitElement {
             class="ft-input ${INPUT_TEXT} rounded-r-(--furtalk-radius) focus:bg-(--furtalk-bg) focus:outline-none focus:ring-0"
             type="url"
             autocomplete="url"
-            placeholder="网站（可选）"
-            aria-label="网站（可选）"
+            placeholder=${this.t('profile.website')}
+            aria-label=${this.t('profile.website')}
             .value=${this.hints.website_url}
             ?disabled=${locked}
             @input=${(event: Event) =>
@@ -1415,8 +1530,8 @@ export class FurtalkCommentsElement extends LitElement {
       <textarea
         class="ft-textarea ${INPUT_TEXT} min-h-[90px] resize-y [border-bottom:1px_solid_var(--furtalk-border)] focus:outline-2 focus:outline-(--furtalk-accent) focus:outline-offset-1 text-[14px] leading-relaxed"
         data-composer=${key}
-        placeholder="写下你的评论…"
-        aria-label="评论内容"
+        placeholder=${this.t('composer.placeholder')}
+        aria-label=${this.t('composer.ariaLabel')}
         .value=${composer.body}
         @input=${(event: Event) => {
           composer.body = (event.target as HTMLTextAreaElement).value
@@ -1431,14 +1546,18 @@ export class FurtalkCommentsElement extends LitElement {
               class="ft-error-text m-0 mt-1 text-(--furtalk-danger) text-[13px]"
               role="alert"
             >
-              ${composer.error}
+              ${renderMessage(composer.error, this.language)}
             </p>`
           : nothing
       }
       ${
         busy
           ? html`<p class="ft-note ${NOTE_TEXT}">
-              ${this.state.status === 'creating' ? '正在发表…' : '正在处理…'}
+              ${
+                this.state.status === 'creating'
+                  ? this.t('composer.busyCreating')
+                  : this.t('composer.busyProcessing')
+              }
             </p>`
           : nothing
       }
@@ -1460,7 +1579,7 @@ export class FurtalkCommentsElement extends LitElement {
       <button
         type="button"
         class="ft-emoji-trigger ${EMOJI_TRIGGER_BUTTON}"
-        aria-label="表情"
+        aria-label=${this.t('emoji.trigger.aria')}
         aria-expanded=${panelOpen}
         aria-controls="ft-emoji-panel-${key}"
         @click=${() => this.toggleEmojiPanel(key)}
@@ -1508,7 +1627,7 @@ export class FurtalkCommentsElement extends LitElement {
         class="ft-emoji-panel absolute inset-x-0 top-full mt-2 z-20 rounded-(--furtalk-radius) p-3 flex flex-col gap-2.5 bg-(--furtalk-bg) border border-solid border-(--furtalk-border) shadow-[0_4px_20px_rgba(0,0,0,0.08)] max-h-80"
         role="dialog"
         aria-modal="false"
-        aria-label="选择表情"
+        aria-label=${this.t('emoji.panel.aria')}
         @keydown=${(event: KeyboardEvent) => {
           if (event.key === 'Escape') {
             event.stopPropagation()
@@ -1519,7 +1638,7 @@ export class FurtalkCommentsElement extends LitElement {
         <div
           class="ft-emoji-tabs flex gap-1.5 flex-wrap [border-bottom:1px_solid_var(--furtalk-border)] pb-2"
           role="tablist"
-          aria-label="表情分类"
+          aria-label=${this.t('emoji.tabs.aria')}
           @keydown=${(event: KeyboardEvent) => {
             if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
             event.preventDefault()
@@ -1551,17 +1670,21 @@ export class FurtalkCommentsElement extends LitElement {
           <div class="ft-emoji-status">
             ${
               this.emojiState === 'loading'
-                ? html`<p class="ft-note ${NOTE_TEXT}">正在加载表情…</p>`
+                ? html`<p class="ft-note ${NOTE_TEXT}">
+                    ${this.t('emoji.loading')}
+                  </p>`
                 : this.emojiState === 'error'
                   ? html`
                       <div class="ft-emoji-msg grid gap-2 py-1" role="status">
-                        <p class="ft-note m-0 ${NOTE_TEXT}">表情加载失败。</p>
+                        <p class="ft-note m-0 ${NOTE_TEXT}">
+                          ${this.t('emoji.loadFailed')}
+                        </p>
                         <button
                           type="button"
                           class="ft-btn ${DEFAULT_BUTTON}"
                           @click=${() => this.retryEmojiLoad()}
                         >
-                          重试
+                          ${this.t('common.retry')}
                         </button>
                       </div>
                     `
@@ -1575,7 +1698,9 @@ export class FurtalkCommentsElement extends LitElement {
                     ${activePack.items.map((item) => this.renderEmojiItem(key, item))}
                   </div>
                 `
-              : html`<p class="ft-note ${NOTE_TEXT}">该分类暂无表情。</p>`
+              : html`<p class="ft-note ${NOTE_TEXT}">
+                  ${this.t('emoji.emptyCategory')}
+                </p>`
           }
         </div>
       </div>
@@ -1638,7 +1763,7 @@ export class FurtalkCommentsElement extends LitElement {
       return html`<div
         class="ft-closed border border-solid border-(--furtalk-border) rounded-(--furtalk-radius) p-3 mb-4 text-(--furtalk-text-muted) text-[14px]"
       >
-        评论区已关闭，仅可查看历史评论。
+        ${this.t('thread.closed')}
       </div>`
     }
     const busy =
@@ -1663,7 +1788,7 @@ export class FurtalkCommentsElement extends LitElement {
                       ?disabled=${busy}
                       @click=${() => this.handleLogout()}
                     >
-                      退出登录
+                      ${this.t('composer.logout')}
                     </button>
                   `
                 : nothing
@@ -1674,7 +1799,11 @@ export class FurtalkCommentsElement extends LitElement {
               ?disabled=${submitDisabled}
               @click=${() => this.submitRoot()}
             >
-              ${this.state.status === 'creating' ? '发表中…' : '发表评论'}
+              ${
+                this.state.status === 'creating'
+                  ? this.t('composer.submitting')
+                  : this.t('composer.submit')
+              }
             </button>
           </div>
         </div>
@@ -1682,7 +1811,97 @@ export class FurtalkCommentsElement extends LitElement {
     `
   }
 
-  private renderSortBarLink(): TemplateResult | typeof nothing {
+  /**
+   * Renders the sort-bar trailing control group: the optional portal link
+   * (admin / my-comments) followed by the always-present language trigger and
+   * its menu. Anonymous ordinary visitors have no portal link but the
+   * language control stays visible.
+   */
+  private renderTrailingControls(): TemplateResult {
+    return html`
+      <div class="ft-trailing-controls inline-flex items-center gap-1 ml-auto">
+        ${this.renderPortalLink()}
+        <div class="ft-lang relative">
+          <button
+            type="button"
+            class="${LANG_TRIGGER_BUTTON}"
+            aria-haspopup="menu"
+            aria-expanded=${this.languageMenuOpen}
+            aria-label=${this.t('lang.button.aria')}
+            title=${this.t('lang.button.aria')}
+            @click=${() => this.toggleLanguageMenu()}
+            @keydown=${(event: KeyboardEvent) => {
+              if (
+                event.key === 'ArrowDown' ||
+                event.key === 'Enter' ||
+                event.key === ' '
+              ) {
+                event.preventDefault()
+                this.setLanguageMenu(true)
+              }
+            }}
+          >
+            <svg
+              class="ft-lang-icon size-[18px]"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <path d="M2 12h20"></path>
+              <path
+                d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"
+              ></path>
+            </svg>
+          </button>
+          ${
+            this.languageMenuOpen
+              ? html`
+                  <div
+                    class="${LANG_MENU}"
+                    role="menu"
+                    aria-label=${this.t('lang.menu.aria')}
+                    @keydown=${(event: KeyboardEvent) => {
+                      if (event.key === 'Escape') {
+                        event.stopPropagation()
+                        this.setLanguageMenu(false)
+                        this.focusLanguageTrigger()
+                      } else if (event.key === 'ArrowDown') {
+                        event.preventDefault()
+                        this.moveLanguageFocus(1)
+                      } else if (event.key === 'ArrowUp') {
+                        event.preventDefault()
+                        this.moveLanguageFocus(-1)
+                      }
+                    }}
+                  >
+                    ${SUPPORTED_LANGUAGES.map(
+                      (language) => html`
+                        <button
+                          type="button"
+                          role="menuitemradio"
+                          class="${LANG_MENU_ITEM}"
+                          aria-checked=${language === this.language}
+                          @click=${() => this.selectLanguage(language)}
+                        >
+                          ${LANGUAGE_LABELS[language]}
+                        </button>
+                      `,
+                    )}
+                  </div>
+                `
+              : nothing
+          }
+        </div>
+      </div>
+    `
+  }
+
+  private renderPortalLink(): TemplateResult | typeof nothing {
     const origin = (this.config?.serviceOrigin ?? '').trim()
     const isAdmin =
       this.state.session?.valid === true && this.state.session?.role === 'admin'
@@ -1691,12 +1910,12 @@ export class FurtalkCommentsElement extends LitElement {
       const href = origin ? `${origin}/admin` : '/admin'
       return html`
         <a
-          class="ft-portal-link text-(--furtalk-text-muted) hover:text-(--furtalk-accent) text-[12px] no-underline hover:underline transition-colors ml-auto"
+          class="ft-portal-link text-(--furtalk-text-muted) hover:text-(--furtalk-accent) text-[12px] no-underline hover:underline transition-colors"
           href=${href}
           target="_blank"
           rel="noreferrer noopener"
         >
-          后台管理
+          ${this.t('portal.admin')}
         </a>
       `
     }
@@ -1705,12 +1924,12 @@ export class FurtalkCommentsElement extends LitElement {
       const href = origin ? `${origin}/account/comments` : '/account/comments'
       return html`
         <a
-          class="ft-portal-link text-(--furtalk-text-muted) hover:text-(--furtalk-accent) text-[12px] no-underline hover:underline transition-colors ml-auto"
+          class="ft-portal-link text-(--furtalk-text-muted) hover:text-(--furtalk-accent) text-[12px] no-underline hover:underline transition-colors"
           href=${href}
           target="_blank"
           rel="noreferrer noopener"
         >
-          我的评论
+          ${this.t('portal.myComments')}
         </a>
       `
     }
@@ -1726,7 +1945,9 @@ export class FurtalkCommentsElement extends LitElement {
     if (!key) return nothing
     const composer = key === 'reply' ? this.reply : this.root
     const pendingLabel =
-      key === 'reply' ? '完成验证后即可发布回复。' : '完成验证后即可发表评论。'
+      key === 'reply'
+        ? this.t('captcha.pending.reply')
+        : this.t('captcha.pending.comment')
     return html`
       <div
         class="ft-captcha-mask fixed inset-0 z-[2147483647] bg-[rgba(17,24,39,0.45)] backdrop-blur-xs flex p-4 overflow-y-auto"
@@ -1735,13 +1956,15 @@ export class FurtalkCommentsElement extends LitElement {
           class="ft-captcha-mask-panel m-auto w-full max-w-[360px] bg-(--furtalk-bg) border border-solid border-(--furtalk-border) rounded-(--furtalk-radius) shadow-[0_10px_30px_rgba(0,0,0,0.15)] p-4.5 grid gap-3 outline-none"
           role="dialog"
           aria-modal="true"
-          aria-label="人机验证"
+          aria-label=${this.t('captcha.mask.title')}
           tabindex="-1"
           @keydown=${(event: KeyboardEvent) => {
             if (event.key === 'Escape') this.cancelCaptchaMask()
           }}
         >
-          <p class="ft-captcha-mask-title m-0 font-semibold">人机验证</p>
+          <p class="ft-captcha-mask-title m-0 font-semibold">
+            ${this.t('captcha.mask.title')}
+          </p>
           <p class="ft-note ${NOTE_TEXT}">${pendingLabel}</p>
           <div
             class="ft-captcha-host flex min-h-[70px] items-center justify-start"
@@ -1753,7 +1976,7 @@ export class FurtalkCommentsElement extends LitElement {
                   class="ft-error-text m-0 mt-1 text-(--furtalk-danger) text-[13px]"
                   role="alert"
                 >
-                  ${composer.error}
+                  ${renderMessage(composer.error, this.language)}
                 </p>`
               : nothing
           }
@@ -1763,7 +1986,7 @@ export class FurtalkCommentsElement extends LitElement {
               class="${DEFAULT_BUTTON}"
               @click=${() => this.cancelCaptchaMask()}
             >
-              取消
+              ${this.t('common.cancel')}
             </button>
           </div>
         </div>
@@ -1801,12 +2024,12 @@ export class FurtalkCommentsElement extends LitElement {
         <span
           class="ft-like ft-like-count text-(--furtalk-text-muted) text-[12px] px-1.5"
         >
-          赞 ${count}
+          ${this.t('like.count', { count })}
         </span>
       `
     }
     const liked = node.liked_by_me === true
-    const label = liked ? '取消点赞' : '点赞'
+    const label = liked ? this.t('like.unlike') : this.t('like.like')
     return html`
       <button
         type="button"
@@ -1842,10 +2065,16 @@ export class FurtalkCommentsElement extends LitElement {
         type="button"
         class="${ACTION_BUTTON} ${pinned ? 'text-(--furtalk-accent)' : ''}"
         ?disabled=${busy || pending}
-        aria-label=${pinned ? '取消置顶' : '置顶'}
+        aria-label=${pinned ? this.t('pin.unpin') : this.t('pin.pin')}
         @click=${() => this.handlePin(node.id, !pinned)}
       >
-        ${pending ? '处理中…' : pinned ? '取消置顶' : '置顶'}
+        ${
+          pending
+            ? this.t('common.processing')
+            : pinned
+              ? this.t('pin.unpin')
+              : this.t('pin.pin')
+        }
       </button>
     `
   }
@@ -1861,7 +2090,7 @@ export class FurtalkCommentsElement extends LitElement {
     // unsafeHTML 注入 DOM。renderCommentBody 是唯一输入源：markdown-it 已
     // 禁用原始 HTML 并限制链接目标，目录图片 token 也只经该边界展开。
     const body = deleted
-      ? '（该评论已被删除）'
+      ? this.t('comment.deleted')
       : unsafeHTML(renderCommentBody(node.body, this.emojiCatalog))
     const owned = isOwnedBy(node, session ?? null)
     const busy =
@@ -1912,7 +2141,7 @@ export class FurtalkCommentsElement extends LitElement {
             node.author_role === 'admin'
               ? html`<span
                   class="ft-admin inline-block text-[11px] font-medium text-blue-700 bg-blue-100 dark:text-blue-300 dark:bg-blue-900/40 rounded-full px-2 py-0.5"
-                  >管理员</span
+                  >${this.t('badge.admin')}</span
                 >`
               : nothing
           }
@@ -1920,8 +2149,8 @@ export class FurtalkCommentsElement extends LitElement {
             isRoot && node.is_pinned === true
               ? html`<span
                   class="ft-pinned inline-flex items-center gap-0.5 text-[11px] font-medium text-amber-700 bg-amber-100 dark:text-amber-300 dark:bg-amber-900/40 rounded-full px-2 py-0.5"
-                  aria-label="已置顶"
-                  >📌 已置顶</span
+                  aria-label=${this.t('badge.pinned')}
+                  >📌 ${this.t('badge.pinned')}</span
                 >`
               : nothing
           }
@@ -1929,7 +2158,7 @@ export class FurtalkCommentsElement extends LitElement {
             pending
               ? html`<span
                   class="ft-pending inline-block text-[11px] font-medium text-amber-700 bg-amber-100 dark:text-amber-300 dark:bg-amber-900/40 rounded-full px-2 py-0.5"
-                  >待审核</span
+                  >${this.t('badge.pending')}</span
                 >`
               : nothing
           }
@@ -1939,8 +2168,10 @@ export class FurtalkCommentsElement extends LitElement {
                   <span class="ft-reply-to text-xs text-(--furtalk-text-muted)">
                     ${
                       node.reply_to_nickname
-                        ? html`回复 ${node.reply_to_nickname}`
-                        : '回复 已注销用户'
+                        ? this.t('reply.to', {
+                            nickname: node.reply_to_nickname,
+                          })
+                        : this.t('reply.toDeletedUser')
                     }
                   </span>
                 `
@@ -1950,7 +2181,7 @@ export class FurtalkCommentsElement extends LitElement {
             class="ft-time text-xs text-(--furtalk-text-muted)"
             datetime=${node.created_at}
           >
-            ${formatRelativeTime(node.created_at)}
+            ${formatRelativeTime(node.created_at, this.language)}
           </time>
         </div>
         <div
@@ -1973,7 +2204,7 @@ export class FurtalkCommentsElement extends LitElement {
                             ?disabled=${busy}
                             @click=${() => this.openReply(node.id)}
                           >
-                            回复
+                            ${this.t('reply.reply')}
                           </button>
                         `
                       : nothing
@@ -1992,7 +2223,7 @@ export class FurtalkCommentsElement extends LitElement {
                                     ?disabled=${busy}
                                     @click=${() => this.confirmDelete()}
                                   >
-                                    确认删除
+                                    ${this.t('delete.confirm')}
                                   </button>
                                   <button
                                     type="button"
@@ -2000,7 +2231,7 @@ export class FurtalkCommentsElement extends LitElement {
                                     ?disabled=${busy}
                                     @click=${() => this.cancelDelete()}
                                   >
-                                    取消
+                                    ${this.t('delete.cancel')}
                                   </button>
                                 `
                               : html`
@@ -2010,7 +2241,7 @@ export class FurtalkCommentsElement extends LitElement {
                                     ?disabled=${busy}
                                     @click=${() => this.requestDelete(node.id)}
                                   >
-                                    删除
+                                    ${this.t('delete.delete')}
                                   </button>
                                 `
                           }
@@ -2038,7 +2269,7 @@ export class FurtalkCommentsElement extends LitElement {
                         class="${DEFAULT_BUTTON}"
                         @click=${() => this.closeReply()}
                       >
-                        取消回复
+                        ${this.t('reply.cancelReply')}
                       </button>
                       <button
                         type="button"
@@ -2046,7 +2277,7 @@ export class FurtalkCommentsElement extends LitElement {
                         ?disabled=${busy}
                         @click=${() => this.submitReply()}
                       >
-                        回复
+                        ${this.t('reply.reply')}
                       </button>
                     </div>
                   </div>
@@ -2140,13 +2371,29 @@ export class FurtalkCommentsElement extends LitElement {
     }
   }
 
+  /** Translates a stable configuration-error code into the active locale. */
+  private configErrorMessage(): string {
+    const error = this.configError
+    if (!error) return ''
+    switch (error.code) {
+      case 'invalid_site_id':
+        return this.t('config.error.invalidSiteId')
+      case 'missing_page_key':
+        return this.t('config.error.missingPageKey')
+      case 'page_key_too_long':
+        return this.t('config.error.pageKeyTooLong', error.params)
+      case 'invalid_service_origin':
+        return this.t('config.error.invalidServiceOrigin')
+    }
+  }
+
   override render(): TemplateResult | typeof nothing {
     if (this.configError) {
       return html`
-        <div class="${WIDGET_ROOT}">
+        <div class="${WIDGET_ROOT}" lang=${this.language}>
           <div class="${STATE_ERROR}" role="alert">
-            <strong>配置无效</strong>
-            <p class="ft-note ${NOTE_TEXT}">${this.configError}</p>
+            <strong>${this.t('config.invalid')}</strong>
+            <p class="ft-note ${NOTE_TEXT}">${this.configErrorMessage()}</p>
           </div>
         </div>
       `
@@ -2156,8 +2403,8 @@ export class FurtalkCommentsElement extends LitElement {
       case 'boot':
       case 'loading-config':
       case 'loading-thread':
-        return html`<div class="${WIDGET_ROOT}">
-          <div class="${STATE_TEXT}">加载中…</div>
+        return html`<div class="${WIDGET_ROOT}" lang=${this.language}>
+          <div class="${STATE_TEXT}">${this.t('state.loading')}</div>
         </div>`
       case 'error':
         return error ? this.renderError(error) : nothing
@@ -2168,14 +2415,14 @@ export class FurtalkCommentsElement extends LitElement {
     const authPhase = this.state.authPhase
     const notice = this.state.notice
     return html`
-      <div class="${WIDGET_ROOT}">
+      <div class="${WIDGET_ROOT}" lang=${this.language}>
         ${
           notice
             ? html`<div
                 class="ft-success border border-solid border-[#bbf7d0] bg-[#f0fdf4] text-[#166534] p-3.5 rounded-(--furtalk-radius) mb-3 text-[13.5px]"
                 role="status"
               >
-                ${notice}
+                ${renderMessage(notice, this.language)}
               </div>`
             : nothing
         }
@@ -2186,7 +2433,7 @@ export class FurtalkCommentsElement extends LitElement {
                 class="ft-closed border border-solid border-(--furtalk-border) rounded-(--furtalk-radius) p-3 mb-4 text-(--furtalk-text-muted) text-[14px]"
                 role="status"
               >
-                ${this.widgetNotice.text}
+                ${renderMessage(this.widgetNotice.text, this.language)}
                 ${
                   this.widgetNotice.reopenLogout
                     ? html`<button
@@ -2194,7 +2441,7 @@ export class FurtalkCommentsElement extends LitElement {
                         class="${DEFAULT_BUTTON}"
                         @click=${() => this.openLogoutPage()}
                       >
-                        打开登出页
+                        ${this.t('notice.openLogoutPage')}
                       </button>`
                     : nothing
                 }
@@ -2205,7 +2452,7 @@ export class FurtalkCommentsElement extends LitElement {
         <div
           class="ft-sort flex flex-wrap items-center justify-between gap-2 mb-3.5"
           role="group"
-          aria-label="评论排序"
+          aria-label=${this.t('sort.aria')}
         >
           <div
             class="inline-flex items-center p-0.5 bg-(--furtalk-bg-muted) rounded-(--furtalk-radius) border border-solid border-(--furtalk-border)"
@@ -2217,7 +2464,7 @@ export class FurtalkCommentsElement extends LitElement {
               aria-pressed=${this.state.sort === 'asc'}
               @click=${() => this.changeSort('asc')}
             >
-              最早优先
+              ${this.t('sort.asc')}
             </button>
             <button
               type="button"
@@ -2226,7 +2473,7 @@ export class FurtalkCommentsElement extends LitElement {
               aria-pressed=${this.state.sort === 'desc'}
               @click=${() => this.changeSort('desc')}
             >
-              最新优先
+              ${this.t('sort.desc')}
             </button>
             <button
               type="button"
@@ -2235,16 +2482,16 @@ export class FurtalkCommentsElement extends LitElement {
               aria-pressed=${this.state.sort === 'hot'}
               @click=${() => this.changeSort('hot')}
             >
-              最热
+              ${this.t('sort.hot')}
             </button>
           </div>
-          ${this.renderSortBarLink()}
+          ${this.renderTrailingControls()}
         </div>
         ${
           this.state.loadingComments
-            ? html`<div class="${STATE_TEXT}">加载中…</div>`
+            ? html`<div class="${STATE_TEXT}">${this.t('state.loading')}</div>`
             : tree.length === 0
-              ? html`<div class="${STATE_TEXT}">还没有评论，来抢沙发吧</div>`
+              ? html`<div class="${STATE_TEXT}">${this.t('state.empty')}</div>`
               : html`
                   <ul class="ft-list list-none m-0 p-0">
                     ${tree.map((node) => this.renderNode(node, session))}
@@ -2263,7 +2510,7 @@ export class FurtalkCommentsElement extends LitElement {
                       this.state.nextCursor &&
                       void this.loadPage(this.state.nextCursor)}
                   >
-                    ${loadingMore ? '加载中…' : '加载更多'}
+                    ${loadingMore ? this.t('state.loading') : this.t('state.loadMore')}
                   </button>
                 </div>
               `
@@ -2274,10 +2521,11 @@ export class FurtalkCommentsElement extends LitElement {
     `
   }
 
-  private composeMessage(error: unknown): string {
-    if (error instanceof WidgetError) return error.message
-    if (error instanceof Error) return error.message
-    return '操作失败，请稍后重试'
+  /** Builds a render-time display descriptor from an unknown error value. */
+  private composeMessage(error: unknown): DisplayMessage {
+    if (error instanceof Error && error.message)
+      return rawMessage(error.message)
+    return localMessage('common.operationFailed')
   }
 }
 

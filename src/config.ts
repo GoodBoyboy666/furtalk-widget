@@ -16,8 +16,20 @@ export interface WidgetConfig {
   serviceOrigin: string
 }
 
+/**
+ * Stable configuration-error code plus optional parameters. The element
+ * translates the code into the active locale at the UI boundary; no display
+ * sentence is produced here.
+ */
+export type ConfigErrorCode =
+  | 'invalid_site_id'
+  | 'missing_page_key'
+  | 'page_key_too_long'
+  | 'invalid_service_origin'
+
 export interface ConfigError {
-  error: string
+  code: ConfigErrorCode
+  params?: Record<string, string | number>
 }
 
 export const MAX_PAGE_KEY_LENGTH = 512
@@ -49,7 +61,7 @@ export function parseWidgetConfig(
 ): WidgetConfig | ConfigError {
   const siteId = (attrs['site-id'] ?? '').trim()
   if (!DECIMAL_ID.test(siteId)) {
-    return { error: 'site-id must be a positive decimal integer' }
+    return { code: 'invalid_site_id' }
   }
 
   let pageKey = (attrs['page-key'] ?? '').trim()
@@ -57,14 +69,12 @@ export function parseWidgetConfig(
     pageKey = `${location.pathname}${location.search}`
   }
   if (pageKey === '') {
-    return {
-      error:
-        'page-key is required (use "location" to derive it from the current page)',
-    }
+    return { code: 'missing_page_key' }
   }
   if (pageKey.length > MAX_PAGE_KEY_LENGTH) {
     return {
-      error: `page-key must not exceed ${MAX_PAGE_KEY_LENGTH} characters`,
+      code: 'page_key_too_long',
+      params: { max: MAX_PAGE_KEY_LENGTH },
     }
   }
 
@@ -82,7 +92,7 @@ export function parseWidgetConfig(
   const serviceOrigin =
     (attrs['service-origin'] ?? '').trim() || defaultServiceOrigin
   if (!isServiceOrigin(serviceOrigin)) {
-    return { error: 'service-origin must be an absolute https origin' }
+    return { code: 'invalid_service_origin' }
   }
 
   return { siteId, pageKey, pageUrl, pageTitle, serviceOrigin }

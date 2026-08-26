@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { WidgetError } from '../src/errors'
+import { localMessage } from '../src/i18n'
 import { initialState, widgetReducer } from '../src/state'
 import type { Comment, ThreadResponse } from '../src/types'
 
@@ -177,9 +178,9 @@ describe('widgetReducer', () => {
   it('sets and clears the moderation notice', () => {
     let state = widgetReducer(initialState, {
       type: 'notice/set',
-      notice: '评论已提交，等待审核。',
+      notice: localMessage('notice.submissionPending'),
     })
-    expect(state.notice).toContain('待审核')
+    expect(state.notice).toEqual(localMessage('notice.submissionPending'))
     state = widgetReducer(state, { type: 'notice/clear' })
     expect(state.notice).toBeUndefined()
   })
@@ -245,7 +246,7 @@ describe('widgetReducer', () => {
   it('clears a previous success notice when a new submission starts', () => {
     let state = widgetReducer(initialState, {
       type: 'notice/set',
-      notice: '评论已发布。',
+      notice: localMessage('notice.submissionPublished'),
     })
     state = widgetReducer(state, { type: 'create/pending' })
     expect(state.notice).toBeUndefined()

@@ -24,6 +24,7 @@
 
 import { mergeComments } from './comments'
 import type { WidgetError } from './errors'
+import type { DisplayMessage } from './i18n'
 import type {
   Comment,
   CommentSort,
@@ -76,8 +77,12 @@ export interface WidgetState {
   error?: WidgetError
   authPhase: AuthPhase
   pendingAction?: PendingAction
-  /** Success notice shown after a comment submission (never on failure). */
-  notice?: string
+  /**
+   * Success notice shown after a comment submission (never on failure).
+   * Stored as a render-time display descriptor so a language change can
+   * retranslate it; raw backend details stay opaque.
+   */
+  notice?: DisplayMessage
   /**
    * Comment ids with an in-flight Like mutation. Repeat clicks on the same
    * comment are suppressed without blocking unrelated comment actions.
@@ -130,7 +135,7 @@ export type WidgetAction =
   | { type: 'pin/pending'; commentId: string }
   | { type: 'pin/settled'; commentId: string; result: PinResult }
   | { type: 'pin/error'; commentId: string }
-  | { type: 'notice/set'; notice: string }
+  | { type: 'notice/set'; notice: DisplayMessage }
   | { type: 'notice/clear' }
   | { type: 'error'; error: WidgetError }
 

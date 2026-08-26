@@ -3,6 +3,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   createProfileStore,
   EMPTY_PROFILE_HINTS,
+  LANGUAGE_KEY,
+  loadLanguage,
+  saveLanguage,
   storageKey,
 } from '../src/storage'
 
@@ -93,5 +96,56 @@ describe('createProfileStore', () => {
       'furtalk:profile:https://comments.example:42',
       expect.stringContaining('a@b.example'),
     )
+  })
+})
+
+describe('language store', () => {
+  it('round-trips a supported language under the fixed key', () => {
+    const storage = new Map<string, string>()
+    const backend = {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => storage.set(key, value),
+    }
+    expect(loadLanguage(backend)).toBeNull()
+    saveLanguage('zh-CN', backend)
+    expect(loadLanguage(backend)).toBe('zh-CN')
+    expect(storage.get(LANGUAGE_KEY)).toBe('zh-CN')
+    saveLanguage('en', backend)
+    expect(loadLanguage(backend)).toBe('en')
+  })
+
+  it('ignores invalid or unsupported stored values', () => {
+    expect(loadLanguage({ getItem: () => 'de', setItem: () => {} })).toBeNull()
+    expect(
+      loadLanguage({ getItem: () => 'zh-TW', setItem: () => {} }),
+    ).toBeNull()
+    expect(loadLanguage({ getItem: () => '{json', setItem: () => {} })).toBeNull()
+  })
+
+  it('returns null when no storage exists', () => {
+    expect(loadLanguage(null)).toBeNull()
+  })
+
+  it('degrades safely when storage access throws', () => {
+    const throwing = {
+      getItem: () => {
+        throw new Error('blocked')
+      },
+      setItem: () => {
+        throw new Error('quota')
+      },
+    }
+    expect(() => loadLanguage(throwing)).not.toThrow()
+    expect(loadLanguage(throwing)).toBeNull()
+    expect(() => saveLanguage('en', throwing)).not.toThrow()
+  })
+
+  it('uses the real localStorage path when available', () => {
+    const getSpy = vi.fn(() => null)
+    const setSpy = vi.fn()
+    const backend = { getItem: getSpy, setItem: setSpy }
+    expect(loadLanguage(backend)).toBeNull()
+    saveLanguage('zh-CN', backend)
+    expect(setSpy).toHaveBeenCalledWith(LANGUAGE_KEY, 'zh-CN')
   })
 })

@@ -316,11 +316,11 @@ describe('hot ordering', () => {
 
 describe('submissionNotice', () => {
   it('asks for moderation when the created comment is pending', () => {
-    expect(submissionNotice('pending')).toBe('评论已提交，等待审核。')
+    expect(submissionNotice('pending')).toBe('notice.submissionPending')
   })
 
   it('announces a direct publish', () => {
-    expect(submissionNotice('published')).toBe('评论已发布。')
+    expect(submissionNotice('published')).toBe('notice.submissionPublished')
   })
 
   it('returns no success copy for other statuses', () => {
