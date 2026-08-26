@@ -274,6 +274,302 @@ describe('FurtalkCommentsElement children list layout', () => {
   })
 })
 
+describe('FurtalkCommentsElement long-region collapse', () => {
+  type CollapseInstance = {
+    renderNode(n: CommentNode, s?: WidgetSession): TemplateResult
+    language: SupportedLanguage
+    deletingId: string | null
+    overflowingRegions: Set<string>
+    expandedRegions: Set<string>
+    syncLimitedRegions(): void
+    renderRoot: ShadowRoot
+    regionResizeObserver: ResizeObserver | null
+    requestUpdate: () => Promise<unknown>
+    boot: () => void
+    updateComplete: Promise<unknown>
+    remove(): void
+  }
+
+  function collapseNodeHost(
+    comment: CommentNode,
+    options: {
+      overflowing?: string[]
+      expanded?: string[]
+      language?: SupportedLanguage
+    } = {},
+  ): { element: CollapseInstance; host: HTMLDivElement } {
+    const element = document.createElement(
+      COMPOSER_HOST_TAG,
+    ) as unknown as CollapseInstance
+    element.language = options.language ?? 'zh-CN'
+    element.deletingId = null
+    element.overflowingRegions = new Set(options.overflowing ?? [])
+    element.expandedRegions = new Set(options.expanded ?? [])
+    const host = document.createElement('div')
+    render(element.renderNode(comment), host)
+    return { element, host }
+  }
+
+  function region(
+    host: HTMLDivElement,
+    kind: 'content' | 'children',
+    commentId: string,
+  ): HTMLElement {
+    const result = host.querySelector<HTMLElement>(
+      `.ft-region[data-region-kind="${kind}"][data-comment-id="${commentId}"]`,
+    )
+    if (!result) throw new Error(`missing ${kind} region for ${commentId}`)
+    return result
+  }
+
+  function measurementTarget(
+    element: CollapseInstance,
+    comment: CommentNode,
+  ): Promise<HTMLElement> {
+    element.boot = () => undefined
+    // Lit's dev build rejects class-field shadowing once an element is
+    // connected. The production widget has the same pre-existing fields, so
+    // mirror the style-adoption test's setup before awaiting the first update.
+    for (const key of [
+      'siteId',
+      'pageKey',
+      'pageUrl',
+      'pageTitle',
+      'serviceOrigin',
+    ]) {
+      delete (element as unknown as Record<string, unknown>)[key]
+    }
+    document.body.appendChild(element as unknown as HTMLElement)
+    return element.updateComplete.then(() => {
+      render(element.renderNode(comment), element.renderRoot)
+      const target = element.renderRoot.querySelector<HTMLElement>(
+        '.ft-region-measurement[data-region-kind="content"]',
+      )
+      if (!target) throw new Error('missing content measurement target')
+      return target
+    })
+  }
+
+  it('renders independent region wrappers with the fixed height candidates', () => {
+    const root = node({
+      id: 'root',
+      children: [node({ id: 'reply', parent_id: 'root', depth: 1 })],
+    })
+    const { host } = collapseNodeHost(root)
+
+    const content = region(host, 'content', 'root')
+    expect(content.id).toBe('ft-content-region-root')
+    expect(content.classList.contains('max-h-[300px]')).toBe(false)
+    expect(content.querySelector('.ft-region-measurement')).not.toBeNull()
+    expect(
+      content
+        .querySelector('.ft-region-measurement')
+        ?.classList.contains('flow-root'),
+    ).toBe(true)
+
+    const children = region(host, 'children', 'root')
+    expect(children.id).toBe('ft-children-region-root')
+    expect(children.classList.contains('max-h-[400px]')).toBe(false)
+    expect(children.querySelector('ul.ft-children')).not.toBeNull()
+    expect(host.querySelectorAll('.ft-read-more')).toHaveLength(0)
+  })
+
+  it('gates localized Read more controls on measured overflow state', () => {
+    const root = node({
+      id: 'root',
+      children: [node({ id: 'reply', parent_id: 'root', depth: 1 })],
+    })
+    const { host } = collapseNodeHost(root, {
+      overflowing: ['content:root', 'children:root'],
+    })
+
+    expect(
+      region(host, 'content', 'root').classList.contains('max-h-[300px]'),
+    ).toBe(true)
+    expect(
+      region(host, 'children', 'root').classList.contains('max-h-[400px]'),
+    ).toBe(true)
+    expect(host.querySelectorAll('.ft-read-more')).toHaveLength(2)
+    const bodyButton = host.querySelector<HTMLButtonElement>(
+      '.ft-read-more[aria-controls="ft-content-region-root"]',
+    )
+    const subtreeButton = host.querySelector<HTMLButtonElement>(
+      '.ft-read-more[aria-controls="ft-children-region-root"]',
+    )
+    expect(bodyButton?.textContent?.trim()).toBe('阅读更多')
+    expect(bodyButton?.type).toBe('button')
+    expect(subtreeButton?.getAttribute('aria-expanded')).toBe('false')
+    expect(subtreeButton?.classList.contains('ml-11')).toBe(true)
+    expect(
+      subtreeButton?.classList.contains('[@media(max-width:480px)]:ml-0'),
+    ).toBe(true)
+  })
+
+  it('expands one region in isolation and preserves it across re-render', () => {
+    const root = node({
+      id: 'root',
+      children: [node({ id: 'reply', parent_id: 'root', depth: 1 })],
+    })
+    const { element, host } = collapseNodeHost(root, {
+      overflowing: ['content:root', 'children:root'],
+    })
+    const bodyButton = host.querySelector<HTMLButtonElement>(
+      '[aria-controls="ft-content-region-root"]',
+    )
+    bodyButton?.click()
+    expect(element.expandedRegions.has('content:root')).toBe(true)
+    expect(element.expandedRegions.has('children:root')).toBe(false)
+
+    render(element.renderNode(root), host)
+    expect(
+      region(host, 'content', 'root').classList.contains('max-h-[300px]'),
+    ).toBe(false)
+    expect(
+      region(host, 'children', 'root').classList.contains('max-h-[400px]'),
+    ).toBe(true)
+    expect(
+      host.querySelector('[aria-controls="ft-content-region-root"]'),
+    ).toBeNull()
+    expect(
+      host.querySelector('[aria-controls="ft-children-region-root"]'),
+    ).not.toBeNull()
+
+    host
+      .querySelector<HTMLButtonElement>(
+        '[aria-controls="ft-children-region-root"]',
+      )
+      ?.click()
+    render(element.renderNode(root), host)
+    expect(element.expandedRegions).toEqual(
+      new Set(['content:root', 'children:root']),
+    )
+    expect(host.querySelectorAll('.ft-read-more')).toHaveLength(0)
+    expect(
+      region(host, 'content', 'root').querySelector('.ft-body'),
+    ).not.toBeNull()
+    expect(
+      region(host, 'children', 'root').querySelector('ul.ft-children'),
+    ).not.toBeNull()
+  })
+
+  it('uses strict greater-than thresholds for content measurement', async () => {
+    const root = node({ id: 'root' })
+    const { element } = collapseNodeHost(root)
+    const target = await measurementTarget(element, root)
+    const update = vi
+      .spyOn(element, 'requestUpdate')
+      .mockResolvedValue(undefined)
+    Object.defineProperty(target, 'scrollHeight', {
+      configurable: true,
+      value: 300,
+    })
+    element.syncLimitedRegions()
+    expect(element.overflowingRegions.has('content:root')).toBe(false)
+
+    Object.defineProperty(target, 'scrollHeight', { value: 301 })
+    element.syncLimitedRegions()
+    expect(element.overflowingRegions.has('content:root')).toBe(true)
+    expect(update).toHaveBeenCalledTimes(1)
+  })
+
+  it('applies the same strict boundary to the reply-region limit', () => {
+    const root = node({ id: 'root' })
+    const { element } = collapseNodeHost(root)
+    const updateRegionOverflow = (
+      element as unknown as {
+        updateRegionOverflow(
+          kind: 'content' | 'children',
+          commentId: string,
+          height: number,
+        ): boolean
+      }
+    ).updateRegionOverflow.bind(element)
+
+    expect(updateRegionOverflow('children', 'root', 400)).toBe(false)
+    expect(element.overflowingRegions.has('children:root')).toBe(false)
+    expect(updateRegionOverflow('children', 'root', 401)).toBe(true)
+    expect(element.overflowingRegions.has('children:root')).toBe(true)
+  })
+
+  it('remeasures observed targets and skips unchanged observer decisions', async () => {
+    type ResizeObserverMock = {
+      callback: ResizeObserverCallback
+      observe: ReturnType<typeof vi.fn>
+      disconnect: ReturnType<typeof vi.fn>
+      trigger(target: Element): void
+    }
+    class MockResizeObserver {
+      static current: ResizeObserverMock | null = null
+      callback: ResizeObserverCallback
+      observe = vi.fn()
+      disconnect = vi.fn()
+
+      constructor(callback: ResizeObserverCallback) {
+        this.callback = callback
+        MockResizeObserver.current = this
+      }
+
+      trigger(target: Element): void {
+        this.callback(
+          [{ target } as ResizeObserverEntry],
+          this as unknown as ResizeObserver,
+        )
+      }
+    }
+    vi.stubGlobal('ResizeObserver', MockResizeObserver)
+
+    const root = node({ id: 'root' })
+    const { element } = collapseNodeHost(root)
+    const target = await measurementTarget(element, root)
+    const observer = MockResizeObserver.current
+    const update = vi
+      .spyOn(element, 'requestUpdate')
+      .mockResolvedValue(undefined)
+    Object.defineProperty(target, 'scrollHeight', {
+      configurable: true,
+      value: 301,
+    })
+    element.syncLimitedRegions()
+    expect(observer).not.toBeNull()
+    expect(observer?.observe).toHaveBeenCalledWith(target)
+    update.mockClear()
+
+    observer?.trigger(target)
+    expect(update).not.toHaveBeenCalled()
+
+    Object.defineProperty(target, 'scrollHeight', { value: 250 })
+    observer?.trigger(target)
+    expect(element.overflowingRegions.has('content:root')).toBe(false)
+    expect(update).toHaveBeenCalledTimes(1)
+
+    element.remove()
+    expect(observer?.disconnect).toHaveBeenCalled()
+  })
+
+  it('keeps initial measurement working without ResizeObserver', async () => {
+    vi.stubGlobal('ResizeObserver', undefined)
+
+    const root = node({ id: 'root' })
+    const { element } = collapseNodeHost(root)
+    const target = await measurementTarget(element, root)
+    Object.defineProperty(target, 'scrollHeight', {
+      configurable: true,
+      value: 401,
+    })
+
+    element.syncLimitedRegions()
+    expect(element.overflowingRegions.has('content:root')).toBe(true)
+    expect(element.regionResizeObserver).toBeNull()
+  })
+
+  afterEach(() => {
+    document
+      .querySelectorAll(COMPOSER_HOST_TAG)
+      .forEach((element) => element.remove())
+    vi.unstubAllGlobals()
+  })
+})
+
 describe('FurtalkCommentsElement delete confirmation copy', () => {
   it('shows only 确认删除 and 取消 without the redundant confirm prompt text', () => {
     const host = renderNodeHost(

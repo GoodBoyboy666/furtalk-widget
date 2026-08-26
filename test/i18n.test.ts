@@ -96,6 +96,11 @@ describe('translate', () => {
     expect(translate('en', 'like.count', { count: 3 })).toBe('Like 3')
   })
 
+  it('translates the long-region expansion control in both locales', () => {
+    expect(translate('zh-CN', 'comment.readMore')).toBe('阅读更多')
+    expect(translate('en', 'comment.readMore')).toBe('Read more')
+  })
+
   it('returns the key itself for an unknown key instead of blanking', () => {
     expect(
       translate('zh-CN', 'missing.key' as never),

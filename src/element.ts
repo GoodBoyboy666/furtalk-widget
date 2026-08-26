@@ -166,6 +166,14 @@ const ACTIONS_ROW =
 const CHILDREN_LIST =
   'ft-children list-none m-0 mt-3 pl-3.5 [border-left:2px_solid_var(--furtalk-border)] flex flex-col gap-2 [@media(max-width:480px)]:pl-2.5'
 
+/** Natural-height limits for the two independently collapsible regions. */
+const COMMENT_CONTENT_MAX_HEIGHT = 300
+const COMMENT_CHILDREN_MAX_HEIGHT = 400
+
+/** Complete Tailwind candidates for the collapsed outer region wrappers. */
+const CONTENT_COLLAPSED = 'max-h-[300px] overflow-hidden'
+const CHILDREN_COLLAPSED = 'max-h-[400px] overflow-hidden'
+
 /** Shared button chrome (sizing, focus ring); color/background are per kind. */
 const BASE_BUTTON =
   'border border-solid rounded-(--furtalk-radius) px-3.5 py-1.5 cursor-pointer [font:inherit] text-[13px] font-medium leading-5 transition-all duration-150 disabled:opacity-50 disabled:cursor-default focus-visible:outline-2 focus-visible:outline-(--furtalk-accent) focus-visible:outline-offset-1'
@@ -174,6 +182,14 @@ const BASE_BUTTON =
 const DEFAULT_BUTTON =
   BASE_BUTTON +
   ' border-(--furtalk-border) bg-(--furtalk-bg) text-(--furtalk-text-muted) hover:text-(--furtalk-text) hover:bg-(--furtalk-bg-muted) active:scale-[0.98] shadow-2xs'
+
+/** Shared presentation for the one-way expansion control. */
+const READ_MORE_BUTTON =
+  DEFAULT_BUTTON +
+  ' ft-read-more mt-2 text-(--furtalk-accent) border-(--furtalk-border) bg-(--furtalk-bg) hover:bg-(--furtalk-bg-muted)'
+
+/** Keeps the subtree control aligned with the existing flattened reply list. */
+const CHILDREN_READ_MORE_OFFSET = 'ml-11 [@media(max-width:480px)]:ml-0'
 
 /** Primary action button: accent fill with white text. */
 const PRIMARY_BUTTON =
@@ -254,6 +270,8 @@ const LANG_MENU =
 const LANG_MENU_ITEM =
   'block w-full text-left px-3 py-1.5 border-0 bg-transparent text-(--furtalk-text) text-[13px] rounded-md cursor-pointer [font:inherit] hover:bg-(--furtalk-bg-muted) aria-checked:text-(--furtalk-accent) aria-checked:font-semibold focus-visible:outline-2 focus-visible:outline-(--furtalk-accent) focus-visible:outline-offset-1'
 
+type LimitedRegionKind = 'content' | 'children'
+
 export class FurtalkCommentsElement extends LitElement {
   static override properties = {
     siteId: { type: String, attribute: 'site-id' },
@@ -277,6 +295,13 @@ export class FurtalkCommentsElement extends LitElement {
   private api: ApiClient | null = null
   private store: ProfileStore | null = null
   private booted = false
+
+  /** Ephemeral per-region presentation state; neither set is persisted. */
+  private overflowingRegions = new Set<string>()
+  private expandedRegions = new Set<string>()
+  private regionResizeObserver: ResizeObserver | null = null
+  private observedRegionTargets = new Set<HTMLElement>()
+  private regionFallbackCleanup: (() => void) | null = null
 
   private hints: ProfileHints = { email: '', nickname: '', website_url: '' }
 
@@ -326,6 +351,7 @@ export class FurtalkCommentsElement extends LitElement {
 
   override connectedCallback(): void {
     super.connectedCallback()
+    this.setupRegionMeasurementFallback()
     if (!this.booted) {
       this.booted = true
       this.boot()
@@ -334,6 +360,11 @@ export class FurtalkCommentsElement extends LitElement {
 
   override disconnectedCallback(): void {
     super.disconnectedCallback()
+    this.regionResizeObserver?.disconnect()
+    this.regionResizeObserver = null
+    this.observedRegionTargets.clear()
+    this.regionFallbackCleanup?.()
+    this.regionFallbackCleanup = null
     this.languageMenuClose?.()
     this.languageMenuClose = null
     this.languageMenuOpen = false
@@ -364,6 +395,11 @@ export class FurtalkCommentsElement extends LitElement {
     // A stored preference wins, then the browser language list, then `en`.
     this.language = resolveLanguage(loadLanguage(), navigator.languages)
     this.state = initialState
+    this.overflowingRegions.clear()
+    this.expandedRegions.clear()
+    this.regionResizeObserver?.disconnect()
+    this.regionResizeObserver = null
+    this.observedRegionTargets.clear()
     this.configError = null
     this.root = emptyComposer()
     this.reply = null
@@ -798,6 +834,235 @@ export class FurtalkCommentsElement extends LitElement {
     this.captchaMaskKey = null
     this.teardownCaptcha(key)
     this.requestUpdate()
+  }
+
+  // ---- Long-region measurement ------------------------------------------
+
+  /** Installs event-driven measurement fallbacks for browsers without RO. */
+  private setupRegionMeasurementFallback(): void {
+    if (this.regionFallbackCleanup) return
+
+    const onResourceLoad = (): void => {
+      this.syncLimitedRegions()
+    }
+    const onWindowResize = (): void => {
+      this.syncLimitedRegions()
+    }
+
+    // `load` does not bubble from images, so listen in the ShadowRoot capture
+    // phase. This also gives ResizeObserver-enabled browsers a deterministic
+    // correction as soon as a Markdown image has finished loading.
+    this.renderRoot.addEventListener('load', onResourceLoad, true)
+    if (typeof window !== 'undefined') {
+      window.addEventListener('resize', onWindowResize)
+    }
+    this.regionFallbackCleanup = () => {
+      this.renderRoot.removeEventListener('load', onResourceLoad, true)
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('resize', onWindowResize)
+      }
+    }
+  }
+
+  private regionKey(kind: LimitedRegionKind, commentId: string): string {
+    return `${kind}:${commentId}`
+  }
+
+  private regionLimit(kind: LimitedRegionKind): number {
+    return kind === 'content'
+      ? COMMENT_CONTENT_MAX_HEIGHT
+      : COMMENT_CHILDREN_MAX_HEIGHT
+  }
+
+  private regionId(kind: LimitedRegionKind, commentId: string): string {
+    return `ft-${kind}-region-${encodeURIComponent(commentId)}`
+  }
+
+  private regionTargetInfo(
+    target: Element,
+  ): { kind: LimitedRegionKind; commentId: string } | null {
+    const kind = target.getAttribute('data-region-kind')
+    const commentId = target.getAttribute('data-comment-id')
+    if (
+      (kind !== 'content' && kind !== 'children') ||
+      commentId === null ||
+      commentId === ''
+    ) {
+      return null
+    }
+    return { kind, commentId }
+  }
+
+  /** Returns natural content height, independent of any outer max-height. */
+  private naturalRegionHeight(target: HTMLElement): number {
+    const rectHeight = target.getBoundingClientRect().height
+    return Math.max(target.scrollHeight, target.offsetHeight, rectHeight)
+  }
+
+  /** Applies one overflow decision and reports whether the set changed. */
+  private updateRegionOverflow(
+    kind: LimitedRegionKind,
+    commentId: string,
+    height: number,
+  ): boolean {
+    const key = this.regionKey(kind, commentId)
+    const next = height > this.regionLimit(kind)
+    const previous = this.overflowingRegions.has(key)
+    if (next === previous) return false
+    if (next) {
+      this.overflowingRegions.add(key)
+    } else {
+      this.overflowingRegions.delete(key)
+    }
+    return true
+  }
+
+  /** Measures all current regions and synchronizes the single RO instance. */
+  private syncLimitedRegions(): void {
+    const targets = [
+      ...this.renderRoot.querySelectorAll<HTMLElement>(
+        '.ft-region-measurement[data-region-kind][data-comment-id]',
+      ),
+    ]
+    const seenKeys = new Set<string>()
+    let changed = false
+    for (const target of targets) {
+      const info = this.regionTargetInfo(target)
+      if (!info) continue
+      const key = this.regionKey(info.kind, info.commentId)
+      seenKeys.add(key)
+      changed =
+        this.updateRegionOverflow(
+          info.kind,
+          info.commentId,
+          this.naturalRegionHeight(target),
+        ) || changed
+    }
+    // An item removed by sorting, deletion, or pagination must not leave an
+    // eligibility bit behind that could affect a later id reuse.
+    for (const key of [...this.overflowingRegions]) {
+      if (!seenKeys.has(key)) {
+        this.overflowingRegions.delete(key)
+        changed = true
+      }
+    }
+    this.syncRegionResizeObserver(targets)
+    if (changed) this.requestUpdate()
+  }
+
+  private syncRegionResizeObserver(targets: HTMLElement[]): void {
+    if (typeof ResizeObserver === 'undefined') {
+      this.regionResizeObserver?.disconnect()
+      this.regionResizeObserver = null
+      this.observedRegionTargets.clear()
+      return
+    }
+    if (!this.regionResizeObserver) {
+      this.regionResizeObserver = new ResizeObserver((entries) => {
+        this.handleRegionResize(entries)
+      })
+    }
+
+    const sameTargets =
+      targets.length === this.observedRegionTargets.size &&
+      targets.every((target) => this.observedRegionTargets.has(target))
+    if (sameTargets) return
+
+    this.regionResizeObserver.disconnect()
+    this.observedRegionTargets = new Set(targets)
+    for (const target of targets) {
+      this.regionResizeObserver.observe(target)
+    }
+  }
+
+  private handleRegionResize(entries: ResizeObserverEntry[]): void {
+    if (!this.isConnected) return
+    let changed = false
+    for (const entry of entries) {
+      const target = entry.target
+      if (
+        !(target instanceof HTMLElement) ||
+        !this.renderRoot.contains(target)
+      ) {
+        continue
+      }
+      const info = this.regionTargetInfo(target)
+      if (!info) continue
+      changed =
+        this.updateRegionOverflow(
+          info.kind,
+          info.commentId,
+          this.naturalRegionHeight(target),
+        ) || changed
+    }
+    if (changed) this.requestUpdate()
+  }
+
+  private isRegionOverflowing(
+    kind: LimitedRegionKind,
+    commentId: string,
+  ): boolean {
+    return this.overflowingRegions.has(this.regionKey(kind, commentId))
+  }
+
+  private isRegionExpanded(
+    kind: LimitedRegionKind,
+    commentId: string,
+  ): boolean {
+    return this.expandedRegions.has(this.regionKey(kind, commentId))
+  }
+
+  private expandRegion(kind: LimitedRegionKind, commentId: string): void {
+    const key = this.regionKey(kind, commentId)
+    if (this.expandedRegions.has(key)) return
+    this.expandedRegions.add(key)
+    this.requestUpdate()
+  }
+
+  /** Shared two-layer renderer for comment bodies and root reply regions. */
+  private renderLimitedRegion(
+    kind: LimitedRegionKind,
+    commentId: string,
+    content: unknown,
+  ): TemplateResult {
+    const regionId = this.regionId(kind, commentId)
+    const overflowing = this.isRegionOverflowing(kind, commentId)
+    const expanded = this.isRegionExpanded(kind, commentId)
+    const collapsed = overflowing && !expanded
+    const collapsedClass =
+      kind === 'content' ? CONTENT_COLLAPSED : CHILDREN_COLLAPSED
+
+    return html`
+      <div
+        id=${regionId}
+        class="ft-region ${collapsed ? collapsedClass : ''}"
+        data-region-kind=${kind}
+        data-comment-id=${commentId}
+      >
+        <div
+          class="ft-region-measurement flow-root"
+          data-region-kind=${kind}
+          data-comment-id=${commentId}
+        >
+          ${content}
+        </div>
+      </div>
+      ${
+        collapsed
+          ? html`
+              <button
+                type="button"
+                class="${READ_MORE_BUTTON} ${kind === 'children' ? CHILDREN_READ_MORE_OFFSET : ''}"
+                aria-controls=${regionId}
+                aria-expanded="false"
+                @click=${() => this.expandRegion(kind, commentId)}
+              >
+                ${this.t('comment.readMore')}
+              </button>
+            `
+          : nothing
+      }
+    `
   }
 
   // ---- Comment creation ---------------------------------------------------
@@ -2184,11 +2449,15 @@ export class FurtalkCommentsElement extends LitElement {
             ${formatRelativeTime(node.created_at, this.language)}
           </time>
         </div>
-        <div
-          class="${bodyClass} ${deleted ? 'ft-deleted text-(--furtalk-text-muted) italic' : ''}"
-        >
-          ${body}
-        </div>
+        ${this.renderLimitedRegion(
+          'content',
+          node.id,
+          html`<div
+            class="${bodyClass} ${deleted ? 'ft-deleted text-(--furtalk-text-muted) italic' : ''}"
+          >
+            ${body}
+          </div>`,
+        )}
         ${
           !deleted || owned
             ? html`
@@ -2303,8 +2572,10 @@ export class FurtalkCommentsElement extends LitElement {
         </div>
         ${
           descendants.length > 0
-            ? html`
-                <ul
+            ? this.renderLimitedRegion(
+                'children',
+                node.id,
+                html`<ul
                   class="${CHILDREN_LIST} ml-11 [@media(max-width:480px)]:ml-0"
                 >
                   ${descendants.map(
@@ -2314,8 +2585,8 @@ export class FurtalkCommentsElement extends LitElement {
                       </li>
                     `,
                   )}
-                </ul>
-              `
+                </ul>`,
+              )
             : nothing
         }
       </li>
@@ -2326,6 +2597,7 @@ export class FurtalkCommentsElement extends LitElement {
     this.syncCaptchas()
     this.syncMaskFocus()
     this.syncEmojiFocus()
+    this.syncLimitedRegions()
   }
 
   // syncEmojiFocus 在表情面板打开时把焦点移入面板，
