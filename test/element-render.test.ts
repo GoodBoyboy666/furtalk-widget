@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { render } from 'lit'
@@ -1551,7 +1551,10 @@ describe('FurtalkCommentsElement authored stylesheet boundary', () => {
   })
 
   it('never combines a directional border utility with all-side border-solid', () => {
-    const source = readFileSync(resolve('src/element.ts'), 'utf8')
+    const source = readdirSync(resolve('src'))
+      .filter((file) => /^element(?:-[a-z-]+)?\.ts$/.test(file))
+      .map((file) => readFileSync(resolve('src', file), 'utf8'))
+      .join('\n')
     const unsafeDirectionalBorder =
       /(?:border-(?:t|r|b|l)(?:-\S+)?[^'"\n]*border-solid|border-solid[^'"\n]*border-(?:t|r|b|l)(?:-\S+)?)/
 

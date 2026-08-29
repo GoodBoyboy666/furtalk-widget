@@ -3,7 +3,9 @@
 @import 'tailwindcss/theme.css' layer(theme);
 @import 'tailwindcss/utilities.css' layer(utilities) source(none);
 
-@source './element.ts';
+@source './element-styles.ts';
+@source './element-interactions.ts';
+@source './element-render.ts';
 
 @layer base {
   :host {
