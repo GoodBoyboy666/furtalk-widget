@@ -43,6 +43,32 @@ describe('ApiClient', () => {
     expect(calls[0]?.init?.credentials).toBe('include')
   })
 
+  it('removes multiple trailing slashes from the service origin', async () => {
+    const fetchImpl = mockFetch(() =>
+      Promise.resolve(jsonResponse(200, { valid: false })),
+    )
+    const client = new ApiClient({
+      origin: 'https://comments.example////',
+      fetchImpl,
+    })
+
+    await client.widgetSession()
+    expect(calls[0]?.input).toBe(
+      'https://comments.example/api/v1/widget/session',
+    )
+  })
+
+  it('preserves a long non-trailing slash sequence in the service origin', async () => {
+    const fetchImpl = mockFetch(() =>
+      Promise.resolve(jsonResponse(200, { valid: false })),
+    )
+    const origin = `https://comments.example/${'/'.repeat(10_000)}segment`
+    const client = new ApiClient({ origin, fetchImpl })
+
+    await client.widgetSession()
+    expect(calls[0]?.input).toBe(`${origin}/api/v1/widget/session`)
+  })
+
   it('lists comments with page key and limit', async () => {
     const fetchImpl = mockFetch(() =>
       Promise.resolve(jsonResponse(200, { comments: [], next_cursor: null })),

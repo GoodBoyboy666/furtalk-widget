@@ -36,7 +36,14 @@ export class ApiClient {
 
   constructor(options: ApiClientOptions) {
     if (!options.origin) throw new Error('api: service origin is required')
-    this.origin = options.origin.replace(/\/+$/, '')
+    let originEnd = options.origin.length
+    while (originEnd > 0 && options.origin[originEnd - 1] === '/') {
+      originEnd -= 1
+    }
+    this.origin =
+      originEnd === options.origin.length
+        ? options.origin
+        : options.origin.slice(0, originEnd)
     this.fetchImpl = options.fetchImpl ?? ((input, init) => fetch(input, init))
   }
 
