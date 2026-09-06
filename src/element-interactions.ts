@@ -297,10 +297,16 @@ export class ElementInteractions extends ElementRuntime {
     return { kind, commentId }
   }
 
-  /** 返回自然内容高度，与任何外部 max-height 无关。 */
+  /**
+   * 返回正常文档流的内容高度，与任何外部 max-height 或可滚动溢出无关。
+   *
+   * 表情面板等绝对定位后代不会占据该 wrapper 的布局盒，但会被
+   * scrollHeight 计入可滚动溢出；这里使用布局盒高度，避免把浮层误判为
+   * 评论内容超高并触发外层裁剪。
+   */
   protected naturalRegionHeight(target: HTMLElement): number {
     const rectHeight = target.getBoundingClientRect().height
-    return Math.max(target.scrollHeight, target.offsetHeight, rectHeight)
+    return Math.max(target.offsetHeight, rectHeight)
   }
 
   /** 做一次溢出判断，并返回判断结果是否有变化。 */

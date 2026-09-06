@@ -5,6 +5,7 @@ import { render } from 'lit'
 import type { TemplateResult } from 'lit'
 import { FurtalkCommentsElement, formatRelativeTime } from '../src/element'
 import type { CommentNode } from '../src/comments'
+import type { EmojiCatalog } from '../src/emoji'
 import { localMessage, renderMessage, type DisplayMessage, type SupportedLanguage } from '../src/i18n'
 import type { WidgetState } from '../src/state'
 import type {
@@ -281,6 +282,14 @@ describe('FurtalkCommentsElement long-region collapse', () => {
     deletingId: string | null
     overflowingRegions: Set<string>
     expandedRegions: Set<string>
+    reply: {
+      comment: string
+      body: string
+      error: string
+      replyTargetId: string
+    } | null
+    emojiCatalog: EmojiCatalog | null
+    emojiOpenKey: 'root' | 'reply' | null
     syncLimitedRegions(): void
     renderRoot: ShadowRoot
     regionResizeObserver: ResizeObserver | null
@@ -459,17 +468,83 @@ describe('FurtalkCommentsElement long-region collapse', () => {
     const update = vi
       .spyOn(element, 'requestUpdate')
       .mockResolvedValue(undefined)
-    Object.defineProperty(target, 'scrollHeight', {
+    Object.defineProperty(target, 'offsetHeight', {
       configurable: true,
       value: 300,
     })
     element.syncLimitedRegions()
     expect(element.overflowingRegions.has('content:root')).toBe(false)
 
-    Object.defineProperty(target, 'scrollHeight', { value: 301 })
+    Object.defineProperty(target, 'offsetHeight', { value: 301 })
     element.syncLimitedRegions()
     expect(element.overflowingRegions.has('content:root')).toBe(true)
     expect(update).toHaveBeenCalledTimes(1)
+  })
+
+  it('ignores emoji-panel scrollable overflow when measuring a reply region', async () => {
+    const root = node({
+      id: 'root',
+      children: [node({ id: 'reply', parent_id: 'root', depth: 1 })],
+    })
+    const { element } = collapseNodeHost(root)
+    element.reply = {
+      comment: '',
+      body: '',
+      error: '',
+      replyTargetId: 'reply',
+    }
+    element.emojiCatalog = {
+      packs: [{ id: 'default', name: '默认', type: 'unicode', items: [] }],
+      imageByToken: new Map(),
+    }
+    element.emojiOpenKey = 'reply'
+    element.boot = () => undefined
+    for (const key of [
+      'siteId',
+      'pageKey',
+      'pageUrl',
+      'pageTitle',
+      'serviceOrigin',
+    ]) {
+      delete (element as unknown as Record<string, unknown>)[key]
+    }
+    document.body.appendChild(element as unknown as HTMLElement)
+    await element.updateComplete
+    render(element.renderNode(root), element.renderRoot)
+
+    const target = element.renderRoot.querySelector<HTMLElement>(
+      '.ft-region-measurement[data-region-kind="children"]',
+    )
+    const childrenRegion = element.renderRoot.querySelector<HTMLElement>(
+      '.ft-region[data-region-kind="children"][data-comment-id="root"]',
+    )
+    const panel = element.renderRoot.querySelector<HTMLElement>(
+      '.ft-emoji-panel#ft-emoji-panel-reply',
+    )
+    if (!target || !childrenRegion || !panel) {
+      throw new Error('missing reply region or emoji panel')
+    }
+    // 绝对定位的面板把可滚动溢出推到 700px，但正常文档流仍只有 250px。
+    Object.defineProperty(target, 'offsetHeight', {
+      configurable: true,
+      value: 250,
+    })
+    Object.defineProperty(target, 'scrollHeight', {
+      configurable: true,
+      value: 700,
+    })
+
+    element.syncLimitedRegions()
+    await element.updateComplete
+
+    expect(element.overflowingRegions.has('children:root')).toBe(false)
+    expect(childrenRegion.classList.contains('overflow-hidden')).toBe(false)
+    expect(
+      element.renderRoot.querySelector(
+        '.ft-read-more[aria-controls="ft-children-region-root"]',
+      ),
+    ).toBeNull()
+    expect(panel.isConnected).toBe(true)
   })
 
   it('applies the same strict boundary to the reply-region limit', () => {
@@ -525,7 +600,7 @@ describe('FurtalkCommentsElement long-region collapse', () => {
     const update = vi
       .spyOn(element, 'requestUpdate')
       .mockResolvedValue(undefined)
-    Object.defineProperty(target, 'scrollHeight', {
+    Object.defineProperty(target, 'offsetHeight', {
       configurable: true,
       value: 301,
     })
@@ -537,7 +612,7 @@ describe('FurtalkCommentsElement long-region collapse', () => {
     observer?.trigger(target)
     expect(update).not.toHaveBeenCalled()
 
-    Object.defineProperty(target, 'scrollHeight', { value: 250 })
+    Object.defineProperty(target, 'offsetHeight', { value: 250 })
     observer?.trigger(target)
     expect(element.overflowingRegions.has('content:root')).toBe(false)
     expect(update).toHaveBeenCalledTimes(1)
@@ -552,7 +627,7 @@ describe('FurtalkCommentsElement long-region collapse', () => {
     const root = node({ id: 'root' })
     const { element } = collapseNodeHost(root)
     const target = await measurementTarget(element, root)
-    Object.defineProperty(target, 'scrollHeight', {
+    Object.defineProperty(target, 'offsetHeight', {
       configurable: true,
       value: 401,
     })
