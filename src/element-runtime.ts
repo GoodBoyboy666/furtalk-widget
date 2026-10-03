@@ -4,7 +4,7 @@ import { LitElement, unsafeCSS } from 'lit'
 // Lit 在组件的 Shadow DOM 内采用它；不会注入页面级 <style>。
 import widgetCss from './styles.css?inline'
 
-import { ApiClient, WIDGET_PAGE_SIZE } from './api'
+import { ApiClient, WIDGET_PAGE_SIZE, WIDGET_REPLY_PAGE_SIZE } from './api'
 import type { CaptchaHandle } from './captcha'
 import type { ConfigError, WidgetConfig } from './config'
 import { parseWidgetConfig } from './config'
@@ -52,6 +52,13 @@ export class ElementRuntime extends LitElement {
   protected api: ApiClient | null = null
   protected store: ProfileStore | null = null
   protected booted = false
+  /** 评论请求世代；结构或浏览者变化时使旧完成失效。 */
+  protected commentGeneration = 0
+  protected rootRequestToken = 0
+  protected replyRequestTokens = new Map<string, number>()
+  /** 配置和会话探测与组件生命周期绑定。 */
+  protected lifecycleToken = 0
+  protected sessionProbeToken = 0
 
   /** 每个区域临时的展示状态；两组均不持久化。 */
   protected overflowingRegions = new Set<string>()
@@ -122,6 +129,9 @@ export class ElementRuntime extends LitElement {
 
   override disconnectedCallback(): void {
     super.disconnectedCallback()
+    this.lifecycleToken += 1
+    this.invalidatePagination()
+    this.booted = false
     this.regionResizeObserver?.disconnect()
     this.regionResizeObserver = null
     this.observedRegionTargets.clear()
@@ -152,6 +162,8 @@ export class ElementRuntime extends LitElement {
 
   /** 启动 widget：解析语言、解析配置、加载运行时配置、线程与会话。 */
   boot(): void {
+    this.lifecycleToken += 1
+    this.invalidatePagination()
     // 首次渲染前解析初始语言，使 widget 根元素携带正确的 `lang` 属性，所有文案按所选语言渲染。
     // 已存偏好优先，其次浏览器语言列表，最后 `en`。
     this.language = resolveLanguage(loadLanguage(), navigator.languages)
@@ -208,16 +220,22 @@ export class ElementRuntime extends LitElement {
   /** 加载运行时配置，然后加载线程首页。供重试使用。 */
   async load(): Promise<void> {
     if (!this.api || !this.config) return
+    const lifecycle = ++this.lifecycleToken
+    this.invalidatePagination()
     this.state = widgetReducer(this.state, { type: 'config/loading' })
     this.requestUpdate()
     try {
       const config = await this.api.runtimeConfig(this.config.siteId)
+      if (lifecycle !== this.lifecycleToken) return
       this.state = widgetReducer(this.state, { type: 'config/loaded', config })
       this.requestUpdate()
       this.startEmojiLoad(config)
       await this.loadPage()
-      await this.probeSession()
+      if (lifecycle !== this.lifecycleToken) return
+      // 首页已经携带当前 Cookie，首次探测只补充会话资料。
+      await this.probeSession(false)
     } catch (error) {
+      if (lifecycle !== this.lifecycleToken) return
       this.fail(error)
     }
   }
@@ -273,35 +291,124 @@ export class ElementRuntime extends LitElement {
     this.requestUpdate()
   }
 
-  /** 加载一个游标页（cursor 为 null 时为首页）。 */
+  /** 使当前评论请求失效并清理依赖旧结构的回复缓存。 */
+  protected invalidatePagination(): void {
+    this.commentGeneration += 1
+    this.rootRequestToken += 1
+    this.replyRequestTokens.clear()
+    this.state = {
+      ...this.state,
+      repliesByRoot: {},
+      loadingMore: false,
+      loadingComments: false,
+    }
+  }
+
+  /** 加载一个根评论游标页；首页刷新会使旧回复请求失效。 */
   async loadPage(cursor?: string): Promise<void> {
     if (!this.api || !this.config) return
-    if (cursor) {
-      this.state = widgetReducer(this.state, { type: 'thread/load-more' })
-    } else {
-      this.state = widgetReducer(this.state, { type: 'thread/loading' })
-    }
+    if (cursor && (this.state.loadingMore || this.state.loadingComments)) return
+    if (!cursor) this.invalidatePagination()
+    const generation = this.commentGeneration
+    const token = ++this.rootRequestToken
+    const api = this.api
+    const { siteId, pageKey } = this.config
+    const sort = this.state.sort
+    const current = () =>
+      generation === this.commentGeneration && token === this.rootRequestToken
+    this.state = widgetReducer(this.state, {
+      type: cursor ? 'thread/load-more' : 'thread/loading',
+    })
     this.requestUpdate()
     try {
-      const thread = await this.api.listComments(
-        this.config.siteId,
-        this.config.pageKey,
+      const previousIds = new Set(
+        this.state.comments.map((comment) => comment.id),
+      )
+      const thread = await api.listRootComments(
+        siteId,
+        pageKey,
         cursor,
         WIDGET_PAGE_SIZE,
-        this.state.sort,
+        sort,
       )
+      if (!current()) return
       this.state = widgetReducer(this.state, {
         type: cursor ? 'thread/appended' : 'thread/loaded',
         thread,
       })
       this.requestUpdate()
+      // 根列表先渲染；每条新增根评论直接启动自己的首批回复请求。
+      for (const root of thread.comments) {
+        if (root.has_replies && (!cursor || !previousIds.has(root.id))) {
+          void this.loadReplies(root.id)
+        }
+      }
     } catch (error) {
-      if (cursor) {
-        // 加载更多失败时保留当前评论，只停掉加载动画。
-        this.state = { ...this.state, loadingMore: false }
+      if (!current()) return
+      if (this.state.thread) {
+        this.state = widgetReducer(this.state, {
+          type: 'thread/error',
+          error: toWidgetError(error),
+          cursor,
+        })
       } else {
         this.fail(error)
       }
+      this.requestUpdate()
+    }
+  }
+
+  /** 加载指定根评论的一页回复；失败和重试只影响该根评论。 */
+  async loadReplies(rootId: string, append = false): Promise<void> {
+    if (
+      !this.api ||
+      !this.config ||
+      !this.state.comments.some((root) => root.id === rootId)
+    )
+      return
+    const page = this.state.repliesByRoot[rootId]
+    if (
+      page?.loading ||
+      (append && !page?.nextCursor) ||
+      (!append && page?.loaded)
+    )
+      return
+    const cursor = append ? (page?.nextCursor ?? undefined) : undefined
+    const generation = this.commentGeneration
+    const token = (this.replyRequestTokens.get(rootId) ?? 0) + 1
+    this.replyRequestTokens.set(rootId, token)
+    const current = () =>
+      generation === this.commentGeneration &&
+      token === this.replyRequestTokens.get(rootId) &&
+      this.state.comments.some((root) => root.id === rootId)
+    const api = this.api
+    const { siteId, pageKey } = this.config
+    this.state = widgetReducer(this.state, { type: 'replies/loading', rootId })
+    this.requestUpdate()
+    try {
+      const replyPage = await api.listReplies(
+        siteId,
+        pageKey,
+        rootId,
+        cursor,
+        WIDGET_REPLY_PAGE_SIZE,
+      )
+      if (!current()) return
+      this.state = widgetReducer(this.state, {
+        type: 'replies/loaded',
+        rootId,
+        page: replyPage,
+      })
+      // 手动追加后展开整个回复区域，使新内容可以直接被找到。
+      if (append) this.expandedRegions.add(`children:${rootId}`)
+      this.requestUpdate()
+    } catch (error) {
+      if (!current()) return
+      this.state = widgetReducer(this.state, {
+        type: 'replies/error',
+        rootId,
+        error: toWidgetError(error),
+      })
       this.requestUpdate()
     }
   }
@@ -323,15 +430,26 @@ export class ElementRuntime extends LitElement {
    * 返回探测请求本身是否成功，以便建立新会话时把探测失败当作最终结果，
    * 绝不复用旧状态。
    */
-  async probeSession(): Promise<boolean> {
+  async probeSession(refreshOnChange = true): Promise<boolean> {
     if (!this.api) return false
+    const lifecycle = this.lifecycleToken
+    const token = ++this.sessionProbeToken
     try {
       const session = await this.api.widgetSession()
+      if (lifecycle !== this.lifecycleToken || token !== this.sessionProbeToken)
+        return false
+      const previous = this.state.session
+      const viewerChanged =
+        (previous?.valid === true) !== session.valid ||
+        (session.valid &&
+          (previous?.user_id !== session.user_id ||
+            previous?.site_id !== session.site_id))
       this.state = widgetReducer(this.state, {
         type: 'session/probed',
         session,
       })
       this.requestUpdate()
+      if (refreshOnChange && viewerChanged) void this.loadPage()
       return true
     } catch {
       // 普通加载流程里的会话探测只作为参考；建立新凭据的写入流程必须使用返回的布尔结果。

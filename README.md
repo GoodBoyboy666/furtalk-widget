@@ -44,6 +44,15 @@ pnpm check        # Prettier 格式检查
 | `page-title`     | 否   | 页面标题，默认取宿主文档值。                                                                                                          |
 | `service-origin` | 否   | Furtalk 服务源，默认从 `import.meta.url` 推导（开发 / CDN 布局可覆盖），必须是绝对 https origin（本地 http localhost 允许用于开发）。 |
 
+## Comment pagination
+
+Roots and replies have independent pages. The widget loads 10 roots at a time and automatically requests the first 10 replies for each root that has replies. Each root's “Load more replies” control fetches its next page and owns its cursor, loading state, and recoverable error. Replies stay chronological across all depths; roots retain pinned-first ascending, descending, or hot ordering.
+
+- `GET /api/v1/widget/sites/{site_id}/root-comments?page_key&sort&limit&cursor` returns `{thread, comments, next_cursor}`. Root comments include `has_replies`.
+- `GET /api/v1/widget/sites/{site_id}/comments/{comment_id}/replies?page_key&limit&cursor` returns `{root_id, comments, next_cursor}` with published descendants of that visible root.
+
+The two cursor namespaces cannot be mixed across endpoints, sites, pages, root sorts, or reply roots. `ApiClient.listComments` and the original flat endpoint remain available for existing integrations. Deploy support for both new endpoints before the updated widget bundle. Automatic reply requests start directly and use the backend's existing global rate limit.
+
 ## 源码结构
 
 - `src/element.ts` — `<furtalk-comments>` 自定义元素（Lit + Shadow DOM）。

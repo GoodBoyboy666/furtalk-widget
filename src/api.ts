@@ -14,16 +14,21 @@ import type {
   CreateCommentInput,
   LikeResult,
   PinResult,
+  RepliesResponse,
+  RootThreadResponse,
   RuntimeConfig,
   ThreadResponse,
   WidgetSession,
 } from './types'
 
 /**
- * Widget 评论分页大小。Widget 显式请求 10 条平铺记录，以保持首屏轻量；
+ * Widget 根评论分页大小。Widget 显式请求 10 条根评论，以保持首屏轻量；
  * 服务端默认值不受影响。
  */
 export const WIDGET_PAGE_SIZE = 10
+
+/** 每条根评论独立加载的回复分页大小。 */
+export const WIDGET_REPLY_PAGE_SIZE = 10
 
 export interface ApiClientOptions {
   origin: string
@@ -105,6 +110,43 @@ export class ApiClient {
     return this.request<ThreadResponse>(
       'GET',
       `/api/v1/widget/sites/${siteId}/comments?${params.toString()}`,
+    )
+  }
+
+  listRootComments(
+    siteId: string,
+    pageKey: string,
+    cursor?: string,
+    limit = WIDGET_PAGE_SIZE,
+    sort?: CommentSort,
+  ): Promise<RootThreadResponse> {
+    const params = new URLSearchParams({
+      page_key: pageKey,
+      limit: String(limit),
+    })
+    if (cursor) params.set('cursor', cursor)
+    if (sort) params.set('sort', sort)
+    return this.request<RootThreadResponse>(
+      'GET',
+      `/api/v1/widget/sites/${siteId}/root-comments?${params.toString()}`,
+    )
+  }
+
+  listReplies(
+    siteId: string,
+    pageKey: string,
+    rootId: string,
+    cursor?: string,
+    limit = WIDGET_REPLY_PAGE_SIZE,
+  ): Promise<RepliesResponse> {
+    const params = new URLSearchParams({
+      page_key: pageKey,
+      limit: String(limit),
+    })
+    if (cursor) params.set('cursor', cursor)
+    return this.request<RepliesResponse>(
+      'GET',
+      `/api/v1/widget/sites/${siteId}/comments/${rootId}/replies?${params.toString()}`,
     )
   }
 

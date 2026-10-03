@@ -21,7 +21,7 @@
  * 两者共用同一条 popup -> exchange -> probe 流程。
  */
 
-import { mergeComments } from './comments'
+import { compareReplyComments, mergeComments } from './comments'
 import type { WidgetError } from './errors'
 import type { DisplayMessage } from './i18n'
 import type {
@@ -29,6 +29,7 @@ import type {
   CommentSort,
   LikeResult,
   PinResult,
+  RepliesResponse,
   RuntimeConfig,
   ThreadResponse,
   WidgetSession,
@@ -62,17 +63,35 @@ export type PendingAction =
   | { type: 'delete'; commentId: string }
   | { type: 'like'; commentId: string; like: boolean }
 
+/** 每条可见根评论独立拥有的回复页状态。 */
+export interface ReplyPageState {
+  comments: Comment[]
+  nextCursor: string | null
+  loaded: boolean
+  loading: boolean
+  error?: WidgetError
+}
+
+export function emptyReplyPage(): ReplyPageState {
+  return { comments: [], nextCursor: null, loaded: false, loading: false }
+}
+
 export interface WidgetState {
   status: WidgetStatus
   config?: RuntimeConfig
   thread?: ThreadResponse
+  /** 主列表只存根评论；回复通过请求所属的根评论归入独立缓存。 */
   comments: Comment[]
+  repliesByRoot: Record<string, ReplyPageState>
   nextCursor: string | null
   /** 当前线程排序；游标仅对该排序有意义。 */
   sort: CommentSort
   session?: WidgetSession
   loadingMore: boolean
   loadingComments?: boolean
+  commentsError?: WidgetError
+  /** 失败请求的游标；首页重试仍请求首页。 */
+  commentsErrorCursor?: string
   error?: WidgetError
   authPhase: AuthPhase
   pendingAction?: PendingAction
@@ -93,6 +112,7 @@ export interface WidgetState {
 export const initialState: WidgetState = {
   status: 'boot',
   comments: [],
+  repliesByRoot: {},
   nextCursor: null,
   sort: 'asc',
   loadingMore: false,
@@ -109,6 +129,10 @@ export type WidgetAction =
   | { type: 'thread/loaded'; thread: ThreadResponse }
   | { type: 'thread/load-more' }
   | { type: 'thread/appended'; thread: ThreadResponse }
+  | { type: 'thread/error'; error: WidgetError; cursor?: string }
+  | { type: 'replies/loading'; rootId: string }
+  | { type: 'replies/loaded'; rootId: string; page: RepliesResponse }
+  | { type: 'replies/error'; rootId: string; error: WidgetError }
   | { type: 'sort/change'; sort: CommentSort }
   | { type: 'session/probed'; session: WidgetSession }
   | { type: 'authenticating' }
@@ -154,23 +178,46 @@ export function widgetReducer(
         sort: normalizeConfigSort(action.config.comment_sort),
       }
     case 'thread/loading':
-      if (state.status === 'ready') {
-        return { ...state, loadingComments: true, error: undefined }
+      if (
+        state.thread ||
+        state.status === 'ready' ||
+        state.status === 'authenticating' ||
+        state.status === 'creating' ||
+        state.status === 'deleting'
+      ) {
+        return {
+          ...state,
+          loadingComments: true,
+          commentsError: undefined,
+          error: undefined,
+        }
       }
       return { ...state, status: 'loading-thread' }
     case 'thread/loaded':
       return {
         ...state,
-        status: 'ready',
+        status:
+          state.status === 'creating' ||
+          state.status === 'deleting' ||
+          state.status === 'authenticating'
+            ? state.status
+            : 'ready',
         thread: action.thread,
         comments: action.thread.comments,
+        repliesByRoot: {},
         nextCursor: action.thread.next_cursor,
         loadingMore: false,
         loadingComments: false,
         error: undefined,
+        commentsError: undefined,
       }
     case 'thread/load-more':
-      return { ...state, loadingMore: true, error: undefined }
+      return {
+        ...state,
+        loadingMore: true,
+        commentsError: undefined,
+        error: undefined,
+      }
     case 'thread/appended': {
       const comments = mergeComments(state.comments, action.thread.comments)
       return {
@@ -180,6 +227,53 @@ export function widgetReducer(
         nextCursor: action.thread.next_cursor,
         loadingMore: false,
         loadingComments: false,
+        commentsError: undefined,
+      }
+    }
+    case 'thread/error':
+      return {
+        ...state,
+        status: state.status === 'loading-thread' ? 'ready' : state.status,
+        loadingMore: false,
+        loadingComments: false,
+        commentsError: action.error,
+        commentsErrorCursor: action.cursor,
+      }
+    case 'replies/loading': {
+      const page = state.repliesByRoot[action.rootId] ?? emptyReplyPage()
+      return {
+        ...state,
+        repliesByRoot: {
+          ...state.repliesByRoot,
+          [action.rootId]: { ...page, loading: true, error: undefined },
+        },
+      }
+    }
+    case 'replies/loaded': {
+      const page = state.repliesByRoot[action.rootId] ?? emptyReplyPage()
+      return {
+        ...state,
+        repliesByRoot: {
+          ...state.repliesByRoot,
+          [action.rootId]: {
+            comments: mergeComments(page.comments, action.page.comments).sort(
+              compareReplyComments,
+            ),
+            nextCursor: action.page.next_cursor,
+            loaded: true,
+            loading: false,
+          },
+        },
+      }
+    }
+    case 'replies/error': {
+      const page = state.repliesByRoot[action.rootId] ?? emptyReplyPage()
+      return {
+        ...state,
+        repliesByRoot: {
+          ...state.repliesByRoot,
+          [action.rootId]: { ...page, loading: false, error: action.error },
+        },
       }
     }
     case 'sort/change': {
@@ -193,11 +287,13 @@ export function widgetReducer(
         loadingComments: true,
         thread: undefined,
         comments: [],
+        repliesByRoot: {},
         nextCursor: null,
         loadingMore: false,
         pendingLikeIds: {},
         pendingPinIds: {},
         error: undefined,
+        commentsError: undefined,
       }
     }
     case 'session/probed':
@@ -264,16 +360,28 @@ export function widgetReducer(
       const pendingLikeIds = { ...state.pendingLikeIds }
       delete pendingLikeIds[action.commentId]
       const result = action.result
-      const comments = state.comments.map((comment) =>
+      const updateLike = (comment: Comment): Comment =>
         comment.id === result.comment_id
           ? {
               ...comment,
               like_count: result.like_count,
               liked_by_me: result.liked,
             }
-          : comment,
+          : comment
+      const comments = state.comments.map(updateLike)
+      const repliesByRoot = Object.fromEntries(
+        Object.entries(state.repliesByRoot).map(([rootId, page]) => [
+          rootId,
+          { ...page, comments: page.comments.map(updateLike) },
+        ]),
       )
-      return { ...state, pendingLikeIds, comments }
+      return {
+        ...state,
+        pendingLikeIds,
+        comments,
+        repliesByRoot,
+        thread: state.thread ? { ...state.thread, comments } : state.thread,
+      }
     }
     case 'like/error': {
       const pendingLikeIds = { ...state.pendingLikeIds }

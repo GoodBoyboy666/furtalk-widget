@@ -677,12 +677,14 @@ export class ElementInteractions extends ElementRuntime {
     if (!this.api) return
     try {
       await this.api.clearWidgetSession()
+      this.sessionProbeToken += 1
       this.state = widgetReducer(this.state, {
         type: 'auth/settled',
         session: { valid: false },
       })
       this.state = widgetReducer(this.state, { type: 'pending/clear' })
       this.requestUpdate()
+      void this.loadPage()
     } catch (error) {
       this.widgetNotice = {
         text: prefixMessage('notice.logoutFailed', this.composeMessage(error)),
@@ -813,6 +815,8 @@ export class ElementInteractions extends ElementRuntime {
 
   /** 把会话标记为过期，并记录这次要执行的动作，供重试使用。 */
   protected handleSessionExpired(action: PendingAction): void {
+    this.sessionProbeToken += 1
+    this.invalidatePagination()
     this.state = widgetReducer(this.state, {
       type: 'session/probed',
       session: { valid: false },
@@ -820,5 +824,6 @@ export class ElementInteractions extends ElementRuntime {
     this.state = widgetReducer(this.state, { type: 'pending/set', action })
     this.state = widgetReducer(this.state, { type: 'auth/expired' })
     this.requestUpdate()
+    void this.loadPage()
   }
 }

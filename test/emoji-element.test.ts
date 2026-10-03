@@ -111,6 +111,7 @@ function readyElement(overrides: Partial<RuntimeConfig> = {}): EmojiTestElement 
     loadingMore: false,
     authPhase: 'idle',
     pendingLikeIds: {},
+    repliesByRoot: {},
     config: runtimeConfig(overrides),
   }
   return element

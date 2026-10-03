@@ -110,6 +110,23 @@ export interface ThreadResponse {
   next_cursor: string | null
 }
 
+/** 可见根评论；回复存在性由服务端的公开层级投影决定。 */
+export interface RootComment extends Comment {
+  has_replies: boolean
+}
+
+/** 独立分页的根评论列表。 */
+export interface RootThreadResponse extends ThreadResponse {
+  comments: RootComment[]
+}
+
+/** 指定可见根评论下所有层级回复的一页。 */
+export interface RepliesResponse {
+  root_id: string
+  comments: Comment[]
+  next_cursor: string | null
+}
+
 /**
  * widget 会话探测结果（GET /widget/session）。
  *

@@ -1,12 +1,7 @@
 import { html, nothing, type TemplateResult } from 'lit'
 import { unsafeHTML } from 'lit/directives/unsafe-html.js'
 
-import {
-  buildCommentTree,
-  hasNextPage,
-  isOwnedBy,
-  type CommentNode,
-} from './comments'
+import { compareComments, hasNextPage, isOwnedBy } from './comments'
 import { ElementActions } from './element-actions'
 import { AUTH_NOTICE, type ComposerState } from './element-model'
 import {
@@ -44,7 +39,7 @@ import {
 } from './i18n'
 import { insertAtSelection } from './insertion'
 import type { AuthPhase } from './state'
-import type { WidgetSession } from './types'
+import type { Comment, WidgetSession } from './types'
 
 export class ElementRender extends ElementActions {
   // ---- 渲染 -------------------------------------------------------------
@@ -634,25 +629,13 @@ export class ElementRender extends ElementActions {
     `
   }
 
-  private collectDescendants(node: CommentNode): CommentNode[] {
-    const result: CommentNode[] = []
-    const traverse = (current: CommentNode) => {
-      for (const child of current.children) {
-        result.push(child)
-        traverse(child)
-      }
-    }
-    traverse(node)
-    return result
-  }
-
   /**
    * 渲染已发布评论的点赞控件。计数始终可见。
    * 认证模式下每位读者都能看到交互按钮；匿名模式下只有有效的管理员会话有按钮，
    * 普通访客看到只读计数。
    * `aria-pressed` 加上无障碍标签描述状态，而不只依赖颜色。
    */
-  private renderLikeControl(node: CommentNode, busy: boolean): TemplateResult {
+  private renderLikeControl(node: Comment, busy: boolean): TemplateResult {
     const likePending = Boolean(this.state.pendingLikeIds[node.id])
     const count = node.like_count ?? 0
     const canLike =
@@ -686,7 +669,7 @@ export class ElementRender extends ElementActions {
 
   /** 渲染仅管理员可见的根评论置顶控件。 */
   private renderPinControl(
-    node: CommentNode,
+    node: Comment,
     busy: boolean,
     isRoot: boolean,
   ): TemplateResult | typeof nothing {
@@ -719,7 +702,7 @@ export class ElementRender extends ElementActions {
   }
 
   private renderCommentContent(
-    node: CommentNode,
+    node: Comment,
     session: WidgetSession | undefined,
     isRoot: boolean,
   ): TemplateResult {
@@ -934,16 +917,16 @@ export class ElementRender extends ElementActions {
   }
 
   private renderNode(
-    node: CommentNode,
+    node: Comment,
     session: WidgetSession | undefined,
   ): TemplateResult {
-    const isRoot = !node.parent_id || node.depth === 0
-    const descendants = this.collectDescendants(node)
+    const replies = this.state.repliesByRoot[node.id]
+    const descendants = replies?.comments ?? []
 
     return html`
       <li class="ft-item flex flex-col py-3">
         <div class="flex items-start gap-3 w-full">
-          ${this.renderCommentContent(node, session, isRoot)}
+          ${this.renderCommentContent(node, session, true)}
         </div>
         ${
           descendants.length > 0
@@ -962,6 +945,24 @@ export class ElementRender extends ElementActions {
                   )}
                 </ul>`,
               )
+            : nothing
+        }
+        ${
+          replies && (replies.loading || replies.error || replies.nextCursor)
+            ? html`<div
+                class="ft-replies-controls ml-11 mt-2 [@media(max-width:480px)]:ml-0"
+                aria-busy=${replies.loading}
+              >
+                ${replies.error ? html`<p class="${NOTE_TEXT}" role="alert">${this.t('reply.loadFailed')} ${replies.error.message}</p>` : nothing}
+                <button
+                  type="button"
+                  class="${LOAD_MORE_BUTTON}"
+                  ?disabled=${replies.loading}
+                  @click=${() => void this.loadReplies(node.id, replies.loaded)}
+                >
+                  ${replies.loading ? this.t('reply.loading') : replies.error ? this.t('common.retry') : this.t('reply.loadMore')}
+                </button>
+              </div>`
             : nothing
         }
       </li>
@@ -1058,7 +1059,9 @@ export class ElementRender extends ElementActions {
       default:
         break
     }
-    const tree = buildCommentTree(comments, this.state.sort)
+    const roots = [...comments].sort((a, b) =>
+      compareComments(a, b, this.state.sort),
+    )
     const authPhase = this.state.authPhase
     const notice = this.state.notice
     return html`
@@ -1137,16 +1140,18 @@ export class ElementRender extends ElementActions {
         ${
           this.state.loadingComments
             ? html`<div class="${STATE_TEXT}">${this.t('state.loading')}</div>`
-            : tree.length === 0
+            : roots.length === 0
               ? html`<div class="${STATE_TEXT}">${this.t('state.empty')}</div>`
               : html`
                   <ul class="ft-list list-none m-0 p-0">
-                    ${tree.map((node) => this.renderNode(node, session))}
+                    ${roots.map((node) => this.renderNode(node, session))}
                   </ul>
                 `
         }
+        ${this.state.commentsError ? html`<p class="${NOTE_TEXT}" role="alert">${this.state.commentsError.message}</p>` : nothing}
         ${
-          !this.state.loadingComments && hasNextPage(thread)
+          !this.state.loadingComments &&
+          (hasNextPage(thread) || this.state.commentsError)
             ? html`
                 <div class="ft-loadmore flex mt-2">
                   <button
@@ -1154,10 +1159,13 @@ export class ElementRender extends ElementActions {
                     class="${LOAD_MORE_BUTTON}"
                     ?disabled=${loadingMore}
                     @click=${() =>
-                      this.state.nextCursor &&
-                      void this.loadPage(this.state.nextCursor)}
+                      void this.loadPage(
+                        this.state.commentsError
+                          ? this.state.commentsErrorCursor
+                          : (this.state.nextCursor ?? undefined),
+                      )}
                   >
-                    ${loadingMore ? this.t('state.loading') : this.t('state.loadMore')}
+                    ${loadingMore ? this.t('state.loading') : this.state.commentsError ? this.t('common.retry') : this.t('state.loadMore')}
                   </button>
                 </div>
               `

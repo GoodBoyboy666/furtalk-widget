@@ -330,3 +330,113 @@ describe('widgetReducer', () => {
     expect(state.comments).toEqual([])
   })
 })
+
+describe('independent reply pages', () => {
+  it('appends replies only to their root and updates cached likes', () => {
+    let state = widgetReducer(initialState, {
+      type: 'thread/loaded',
+      thread: thread({
+        comments: [comment('1'), comment('2')],
+        next_cursor: 'roots-next',
+      }),
+    })
+    const first = {
+      ...comment('3'),
+      parent_id: 'missing',
+      root_id: '1',
+      depth: 2,
+    }
+    state = widgetReducer(state, {
+      type: 'replies/loaded',
+      rootId: '1',
+      page: { root_id: '1', comments: [first], next_cursor: 'reply-next' },
+    })
+    state = widgetReducer(state, {
+      type: 'replies/loaded',
+      rootId: '2',
+      page: {
+        root_id: '2',
+        comments: [{ ...comment('7'), parent_id: '2' }],
+        next_cursor: null,
+      },
+    })
+    const unrelated = state.repliesByRoot['2']
+    state = widgetReducer(state, {
+      type: 'thread/appended',
+      thread: thread({ comments: [comment('2'), comment('9')] }),
+    })
+    expect(state.repliesByRoot['2']).toBe(unrelated)
+    state = widgetReducer(state, {
+      type: 'replies/loaded',
+      rootId: '1',
+      page: {
+        root_id: '1',
+        comments: [first, { ...comment('4'), parent_id: '1' }],
+        next_cursor: null,
+      },
+    })
+    expect(state.comments.map((item) => item.id)).toEqual(['1', '2', '9'])
+    expect(state.repliesByRoot['1']?.comments.map((item) => item.id)).toEqual([
+      '3',
+      '4',
+    ])
+    expect(state.repliesByRoot['2']).toBe(unrelated)
+    state = widgetReducer(state, {
+      type: 'like/settled',
+      commentId: '3',
+      result: { comment_id: '3', like_count: 8, liked: true },
+    })
+    expect(state.repliesByRoot['1']?.comments[0]).toMatchObject({
+      id: '3',
+      parent_id: 'missing',
+      root_id: '1',
+      depth: 2,
+      like_count: 8,
+      liked_by_me: true,
+    })
+    expect(state.comments[0]?.like_count).toBeUndefined()
+  })
+
+  it('retains reply data and cursor through a local error and clears caches on reset', () => {
+    let state = widgetReducer(initialState, {
+      type: 'thread/loaded',
+      thread: thread({ comments: [comment('1')] }),
+    })
+    state = widgetReducer(state, {
+      type: 'replies/loaded',
+      rootId: '1',
+      page: {
+        root_id: '1',
+        comments: [comment('2')],
+        next_cursor: 'reply-next',
+      },
+    })
+    state = widgetReducer(state, { type: 'replies/loading', rootId: '1' })
+    state = widgetReducer(state, {
+      type: 'replies/error',
+      rootId: '1',
+      error: new WidgetError({ message: 'offline' }),
+    })
+    expect(state.status).toBe('ready')
+    expect(state.repliesByRoot['1']).toMatchObject({
+      loaded: true,
+      loading: false,
+      nextCursor: 'reply-next',
+      comments: [{ id: '2' }],
+      error: { message: 'offline' },
+    })
+    state = widgetReducer(state, { type: 'sort/change', sort: 'desc' })
+    expect(state.repliesByRoot).toEqual({})
+  })
+
+  it('keeps active mutation and authentication status during background root reads', () => {
+    for (const status of ['creating', 'deleting', 'authenticating'] as const) {
+      let state = widgetReducer(
+        { ...initialState, status },
+        { type: 'thread/loading' },
+      )
+      state = widgetReducer(state, { type: 'thread/loaded', thread: thread() })
+      expect(state.status).toBe(status)
+    }
+  })
+})

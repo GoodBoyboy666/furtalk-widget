@@ -113,6 +113,64 @@ describe('ApiClient', () => {
     expect(String(calls[0]?.input)).not.toContain('sort=')
   })
 
+  it('pages roots with their own endpoint and sorting scope', async () => {
+    const client = new ApiClient({
+      origin: 'https://comments.example',
+      fetchImpl: mockFetch(() =>
+        Promise.resolve(
+          jsonResponse(200, {
+            thread: {},
+            comments: [{ id: '7', has_replies: true }],
+            next_cursor: 'root-next',
+          }),
+        ),
+      ),
+    })
+    const page = await client.listRootComments(
+      '123',
+      '文章 & key',
+      'root-cursor',
+      undefined,
+      'hot',
+    )
+    const url = new URL(String(calls[0]?.input))
+    expect(url.pathname).toBe('/api/v1/widget/sites/123/root-comments')
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      page_key: '文章 & key',
+      limit: '10',
+      cursor: 'root-cursor',
+      sort: 'hot',
+    })
+    expect(calls[0]?.init?.credentials).toBe('include')
+    expect(page.comments[0]?.has_replies).toBe(true)
+  })
+
+  it('pages replies under one visible root without a root sort parameter', async () => {
+    const client = new ApiClient({
+      origin: 'https://comments.example',
+      fetchImpl: mockFetch(() =>
+        Promise.resolve(
+          jsonResponse(200, { root_id: '7', comments: [], next_cursor: null }),
+        ),
+      ),
+    })
+    const page = await client.listReplies(
+      '123',
+      '文章 & key',
+      '7',
+      'reply-cursor',
+    )
+    const url = new URL(String(calls[0]?.input))
+    expect(url.pathname).toBe('/api/v1/widget/sites/123/comments/7/replies')
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      page_key: '文章 & key',
+      limit: '10',
+      cursor: 'reply-cursor',
+    })
+    expect(calls[0]?.init?.credentials).toBe('include')
+    expect(page.root_id).toBe('7')
+  })
+
   it('sends JSON bodies for write endpoints', async () => {
     const fetchImpl = mockFetch(() =>
       Promise.resolve(new Response(null, { status: 201 })),

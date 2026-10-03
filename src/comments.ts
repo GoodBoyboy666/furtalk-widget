@@ -101,7 +101,7 @@ export function buildCommentTree(
 }
 
 /** 回复始终按时间升序读取，与根排序模式无关。 */
-function compareReplyComments(a: Comment, b: Comment): number {
+export function compareReplyComments(a: Comment, b: Comment): number {
   const aTime = Date.parse(a.created_at)
   const bTime = Date.parse(b.created_at)
   if (aTime !== bTime) return aTime < bTime ? -1 : 1

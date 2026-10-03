@@ -75,6 +75,7 @@ function captchaInstance(
     loadingMore: false,
     authPhase: 'idle',
     pendingLikeIds: {},
+    repliesByRoot: {},
     config: {
       site_id: '1',
       name: 'Site',

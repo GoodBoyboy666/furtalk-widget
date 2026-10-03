@@ -7,7 +7,7 @@ import { FurtalkCommentsElement, formatRelativeTime } from '../src/element'
 import type { CommentNode } from '../src/comments'
 import type { EmojiCatalog } from '../src/emoji'
 import { localMessage, renderMessage, type DisplayMessage, type SupportedLanguage } from '../src/i18n'
-import type { WidgetState } from '../src/state'
+import { initialState, type WidgetState } from '../src/state'
 import type {
   Comment,
   ProfileHints,
@@ -38,6 +38,19 @@ function node(partial: Partial<CommentNode> & { id: string }): CommentNode {
   }
 }
 
+// 既有树形夹具仅用于布局测试；真实状态按根 ID 保存平铺回复。
+function repliesForNode(comment: CommentNode): WidgetState['repliesByRoot'] {
+  const comments: Comment[] = []
+  const collect = (children: CommentNode[]) => {
+    for (const child of children) {
+      comments.push(child)
+      collect(child.children)
+    }
+  }
+  collect(comment.children)
+  return { [comment.id]: { comments, nextCursor: null, loaded: true, loading: false } }
+}
+
 const ownerSession: WidgetSession = {
   valid: true,
   credential_mode: 'authenticated',
@@ -59,11 +72,13 @@ function renderNodeHost(
   }
   const element = document.createElement(tagName) as unknown as {
     renderNode(n: CommentNode, s?: WidgetSession): TemplateResult
+    state: WidgetState
     deletingId: string | null
     language: SupportedLanguage
   }
   element.deletingId = deletingId
   element.language = 'zh-CN'
+  element.state = { ...initialState, repliesByRoot: repliesForNode(comment) }
   const template = element.renderNode(comment, session)
   const host = document.createElement('div')
   render(template, host)
@@ -277,6 +292,7 @@ describe('FurtalkCommentsElement children list layout', () => {
 
 describe('FurtalkCommentsElement long-region collapse', () => {
   type CollapseInstance = {
+    state: WidgetState
     renderNode(n: CommentNode, s?: WidgetSession): TemplateResult
     language: SupportedLanguage
     deletingId: string | null
@@ -314,6 +330,7 @@ describe('FurtalkCommentsElement long-region collapse', () => {
     element.deletingId = null
     element.overflowingRegions = new Set(options.overflowing ?? [])
     element.expandedRegions = new Set(options.expanded ?? [])
+    element.state = { ...initialState, repliesByRoot: repliesForNode(comment) }
     const host = document.createElement('div')
     render(element.renderNode(comment), host)
     return { element, host }
@@ -718,6 +735,7 @@ function composerHost(
     loadingMore: false,
     authPhase: 'idle',
     pendingLikeIds: {},
+    repliesByRoot: {},
     config: {
       site_id: '1',
       name: 'Site',
@@ -906,6 +924,7 @@ describe('FurtalkCommentsElement two-layer logout', () => {
       loadingMore: false,
       authPhase: 'idle',
       pendingLikeIds: {},
+      repliesByRoot: {},
       config: {
         site_id: '1',
         name: 'Site',
@@ -1087,6 +1106,7 @@ describe('FurtalkCommentsElement unified create', () => {
       loadingMore: false,
       authPhase: 'idle',
       pendingLikeIds: {},
+      repliesByRoot: {},
       config: {
         site_id: '1',
         name: 'Site',
@@ -1449,6 +1469,7 @@ function readyViewHost(overrides: Partial<WidgetState> = {}): HTMLDivElement {
     loadingMore: false,
     authPhase: 'idle',
     pendingLikeIds: {},
+    repliesByRoot: {},
     config: {
       site_id: '1',
       name: 'Site',
@@ -1488,6 +1509,7 @@ function maskedViewHost(
     loadingMore: false,
     authPhase: 'idle',
     pendingLikeIds: {},
+    repliesByRoot: {},
     config: {
       site_id: '1',
       name: 'Site',
@@ -1892,11 +1914,11 @@ describe('FurtalkCommentsElement load-more button', () => {
 })
 
 describe('FurtalkCommentsElement load-more retry', () => {
-  // loadMoreHost 为真实的 loadPage 调用准备元素（api 的 listComments 可以注入）。
+  // loadMoreHost 为真实的 loadPage 调用准备元素（api 的 listRootComments 可以注入）。
   function loadMoreHost() {
     const element = document.createElement(COMPOSER_HOST_TAG) as unknown as {
       config: { siteId: string; pageKey: string; serviceOrigin: string }
-      api: { listComments: ReturnType<typeof vi.fn> }
+      api: { listRootComments: ReturnType<typeof vi.fn> }
       state: WidgetState
       hints: ProfileHints
       loadPage(cursor?: string): Promise<void>
@@ -1907,7 +1929,7 @@ describe('FurtalkCommentsElement load-more retry', () => {
       serviceOrigin: 'https://comments.example',
     }
     element.hints = { email: '', nickname: '', website_url: '' }
-    element.api = { listComments: vi.fn() }
+    element.api = { listRootComments: vi.fn() }
     element.state = {
       status: 'ready',
       comments: [node({ id: '1' })],
@@ -1916,6 +1938,7 @@ describe('FurtalkCommentsElement load-more retry', () => {
       loadingMore: false,
       authPhase: 'idle',
       pendingLikeIds: {},
+      repliesByRoot: {},
       config: {
         site_id: '1',
         name: 'Site',
@@ -1932,11 +1955,11 @@ describe('FurtalkCommentsElement load-more retry', () => {
 
   it('keeps the visible thread and the cursor after a failed load-more', async () => {
     const element = loadMoreHost()
-    element.api.listComments.mockRejectedValue(new Error('offline'))
+    element.api.listRootComments.mockRejectedValue(new Error('offline'))
 
     await element.loadPage('c1')
 
-    expect(element.api.listComments).toHaveBeenCalledWith(
+    expect(element.api.listRootComments).toHaveBeenCalledWith(
       '1',
       'page',
       'c1',
@@ -1950,7 +1973,7 @@ describe('FurtalkCommentsElement load-more retry', () => {
 
   it('allows a retry that appends the next page without duplicates', async () => {
     const element = loadMoreHost()
-    element.api.listComments
+    element.api.listRootComments
       .mockRejectedValueOnce(new Error('offline'))
       .mockResolvedValueOnce({
         thread: threadPage(null).thread,
@@ -2040,6 +2063,7 @@ describe('FurtalkCommentsElement Like control', () => {
       loadingMore: false,
       authPhase: 'idle',
       pendingLikeIds: opts.pendingLikeIds ?? {},
+      repliesByRoot: {},
       pendingPinIds: opts.pendingPinIds ?? {},
       config: {
         site_id: '1',
@@ -2157,6 +2181,7 @@ describe('FurtalkCommentsElement hot sort tab', () => {
       loadingMore: false,
       authPhase: 'idle',
       pendingLikeIds: {},
+      repliesByRoot: {},
       config: {
         site_id: '1',
         name: 'Site',
@@ -2234,6 +2259,7 @@ describe('FurtalkCommentsElement language control', () => {
       loadingMore: false,
       authPhase: 'idle',
       pendingLikeIds: {},
+      repliesByRoot: {},
       config: {
         site_id: '1',
         name: 'Site',
